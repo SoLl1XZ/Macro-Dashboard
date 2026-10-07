@@ -1,0 +1,5 @@
+{
+  "title": "Macro Dashboard",
+  "description": "A static dashboard with macroeconomic indicators in six sections: Global, US, Europe, Denmark, Asia and China. A Python script pulls the data from public APIs (FRED, ECB, Eurostat, BIS, IMF and Statistics Denmark), and the page draws the charts with Chart.js.",
+  "tags": ["Python", "JavaScript", "Chart.js", "HTML/CSS"]
+}
