@@ -16,8 +16,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from indicators import PANELS, SECTIONS, Panel, Series
-from transforms import (Observation, difference, shift_months, spread, summarize,
-                        thin_before, year_over_year)
+from transforms import (Observation, difference, infer_frequency, shift_months, spread,
+                        summarize, thin_before, year_over_year)
 
 Batch = dict[str, list[Observation]]  # query -> observations
 
@@ -320,6 +320,7 @@ def series_payload(s: Series, panel: Panel, processed: dict[str, list[Observatio
         "key": s.key,
         "label": s.label,
         "source": SOURCE_NAMES[s.source],
+        "frequency": infer_frequency(obs),  # before thinning, which would make daily data look weekly
         # In IMF's World Economic Outlook the current year is already a projection.
         "forecastFrom": f"{today[:4]}-01-01" if s.source == "imf_weo" else None,
         "error": errors.get(s.key),
@@ -341,6 +342,7 @@ def build_payload(panels: list[Panel], processed: dict[str, list[Observation]],
                 "unit": panel.unit,
                 "description": panel.description,
                 "change": panel.change,
+                "decimals": panel.decimals,
                 "series": [series_payload(s, panel, processed, errors, today) for s in panel.series],
             }
             for panel in panels

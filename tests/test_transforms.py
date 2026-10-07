@@ -1,7 +1,7 @@
 import unittest
 
-from transforms import (change_since, difference, shift_months, spread, summarize,
-                        thin_before, year_over_year)
+from transforms import (change_since, difference, infer_frequency, shift_months, spread,
+                        summarize, thin_before, year_over_year)
 
 
 def monthly(start_year: int, values: list[float]) -> list[tuple[str, float]]:
@@ -78,6 +78,25 @@ class SummarizeTest(unittest.TestCase):
 
     def test_empty_series_has_no_summary(self):
         self.assertIsNone(summarize([], "diff", today="2026-10-07"))
+
+
+class InferFrequencyTest(unittest.TestCase):
+    def test_recognizes_each_frequency(self):
+        business_days = [("2026-09-28", 1.0), ("2026-09-29", 1.0), ("2026-09-30", 1.0),
+                         ("2026-10-01", 1.0), ("2026-10-02", 1.0), ("2026-10-05", 1.0)]
+        cases = {
+            "D": business_days,
+            "W": [("2026-09-05", 1.0), ("2026-09-12", 1.0), ("2026-09-19", 1.0)],
+            "M": monthly(2026, [1.0, 2.0, 3.0]),
+            "Q": [("2026-01-01", 1.0), ("2026-04-01", 1.0), ("2026-07-01", 1.0)],
+            "A": [("2024-01-01", 1.0), ("2025-01-01", 1.0), ("2026-01-01", 1.0)],
+        }
+        for expected, obs in cases.items():
+            with self.subTest(expected=expected):
+                self.assertEqual(infer_frequency(obs), expected)
+
+    def test_single_observation_is_unknown(self):
+        self.assertIsNone(infer_frequency([("2026-01-01", 1.0)]))
 
 
 class ThinBeforeTest(unittest.TestCase):

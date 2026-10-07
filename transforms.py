@@ -82,6 +82,19 @@ def summarize(obs: list[Observation], kind: str, today: str) -> dict | None:
     }
 
 
+def infer_frequency(obs: list[Observation]) -> str | None:
+    """Guess D, W, M, Q or A (annual) from the typical gap between the latest observations."""
+    recent_dates = [date.fromisoformat(d) for d, _ in obs[-13:]]
+    if len(recent_dates) < 2:
+        return None
+    gaps = sorted((later - earlier).days for earlier, later in zip(recent_dates, recent_dates[1:]))
+    median_gap = gaps[len(gaps) // 2]  # median, so a weekend or a holiday doesn't decide it
+    for max_gap_days, frequency in ((4, "D"), (10, "W"), (45, "M"), (120, "Q")):
+        if median_gap <= max_gap_days:
+            return frequency
+    return "A"
+
+
 def iso_week(iso_date: str) -> tuple[int, int]:
     year, week, _ = date.fromisoformat(iso_date).isocalendar()
     return year, week

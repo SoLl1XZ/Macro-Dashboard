@@ -50,6 +50,7 @@ class Panel:
     # How headline changes are shown: "diff" = difference in the unit (%-points for rates),
     # "pct" = percent change (prices, indices, exchange rates).
     change: str = "diff"
+    decimals: int = 2  # values >= 1000 are always shown without decimals
 
 
 def S(key: str, label: str, source: str, query, transform: str | None = None) -> Series:
@@ -192,7 +193,7 @@ PANELS: list[Panel] = [
           (S("eu_hy", "Euro high yield", "fred", "BAMLHE00EHYIOAS"),)),
     Panel("eurusd", "europe", "EUR/USD", "USD pr. EUR",
           "Eurokursen over for dollar (ECB's referencekurs).",
-          (S("eurusd", "EUR/USD", "ecb", "EXR/D.USD.EUR.SP00.A"),), change="pct"),
+          (S("eurusd", "EUR/USD", "ecb", "EXR/D.USD.EUR.SP00.A"),), change="pct", decimals=4),
     Panel("uk", "europe", "UK: rente og inflation", "%",
           "Bank of Englands styringsrente og britisk CPI-inflation.",
           (S("uk_bank_rate", "BoE-rente", "bis", "D.GB"),
@@ -210,7 +211,7 @@ PANELS: list[Panel] = [
           (S("dk_ecb", "Danmark − ECB", "derived", ("dk_cd", "ecb_dfr"), "spread"),)),
     Panel("eurdkk", "denmark", "EUR/DKK (fastkurs)", "DKK pr. EUR",
           "Kronen er bundet til euroen omkring centralkursen 7,46038.",
-          (S("eurdkk", "EUR/DKK", "ecb", "EXR/D.DKK.EUR.SP00.A"),), change="pct"),
+          (S("eurdkk", "EUR/DKK", "ecb", "EXR/D.DKK.EUR.SP00.A"),), change="pct", decimals=4),
     Panel("dk_10y", "denmark", "10-årig statsrente", "%",
           "Dansk 10-årig statsrente sammenlignet med Tyskland.",
           (S("dk_10y", "Danmark", "oecd_lt", "DNK"),
@@ -281,7 +282,7 @@ PANELS: list[Panel] = [
           (S("cn_cpi", "CPI", "imf_cpi", "CHN"),)),
     Panel("usdcny", "china", "USD/CNY", "CNY pr. USD",
           "Yuan over for dollar. Styres delvist af centralbanken.",
-          (S("usdcny", "USD/CNY", "fred", "DEXCHUS"),), change="pct"),
+          (S("usdcny", "USD/CNY", "fred", "DEXCHUS"),), change="pct", decimals=4),
     Panel("cn_gdp", "china", "BNP-vækst inkl. IMF-prognose", "% år/år",
           "Real BNP-vækst. Indeværende og kommende år er IMF-prognoser.",
           (S("cn_gdp", "Kina", "imf_weo", "NGDP_RPCH/CHN"),)),
