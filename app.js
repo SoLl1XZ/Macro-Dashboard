@@ -160,8 +160,209 @@ function renderCard(panel) {
   const head = el("header", "card-head");
   head.append(el("h2", "card-title", panel.title), el("span", "card-unit", panel.unit));
   card.append(head, el("p", "card-desc", panel.description), renderHeadline(panel));
+  if (panel.series.some(series => series.data.length > 0)) card.append(renderChartSlot(panel));
   if (panel.series.length > 1) card.append(renderSeriesTable(panel));
   return card;
+}
+
+// -------------------------------------------------------------------------- charts
+
+const DEFAULT_RANGE_YEARS = 5; // short enough that 2020's outliers don't flatten every chart
+let rangeYears = DEFAULT_RANGE_YEARS; // 0 = all data
+let activeCharts = [];
+
+const AXIS_NUMBER_FORMAT = new Intl.NumberFormat("da-DK", { maximumFractionDigits: 2 });
+// Local time on purpose: the date adapter places ticks at local midnight, so in UTC
+// "1 Jan 2022 00:00" in Copenhagen would still be 2021.
+const AXIS_MONTH_FORMAT = new Intl.DateTimeFormat("da-DK", { month: "short", year: "2-digit" });
+
+function cssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+function isoDate(timestamp) {
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function rangeStart(years) {
+  if (years === 0) return undefined;
+  // Counted back from when the data was fetched, so an old data file still shows its data.
+  const start = new Date(DATA.generatedAt);
+  start.setUTCFullYear(start.getUTCFullYear() - years);
+  return start.getTime();
+}
+
+function timeUnit(years) {
+  return years === 1 ? "month" : "year";
+}
+
+function formatAxisDate(timestamp) {
+  const date = new Date(timestamp);
+  return rangeYears === 1 ? AXIS_MONTH_FORMAT.format(date) : String(date.getFullYear());
+}
+
+// Binary search for the point closest to pixel x; points are sorted by date.
+function nearestIndex(points, x) {
+  let low = 0;
+  let high = points.length - 1;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (points[middle].x < x) low = middle + 1;
+    else high = middle;
+  }
+  const previousIsCloser = low > 0 && x - points[low - 1].x < points[low].x - x;
+  return previousIsCloser ? low - 1 : low;
+}
+
+// Hover mode: the point closest to the pointer in *each* series. Chart.js' built-in
+// "index" mode assumes all series share the same dates, which mixed daily/monthly
+// series and rates from different central banks don't.
+function nearestPerSeries(chart, event) {
+  const { left, right } = chart.chartArea;
+  const items = [];
+  chart.data.datasets.forEach((dataset, datasetIndex) => {
+    const points = chart.getDatasetMeta(datasetIndex).data;
+    if (points.length === 0) return;
+    const index = nearestIndex(points, event.x);
+    const point = points[index];
+    if (point.x >= left && point.x <= right) items.push({ element: point, datasetIndex, index });
+  });
+  return items;
+}
+
+// A vertical hairline at the hovered date.
+const crosshairPlugin = {
+  id: "crosshair",
+  afterDatasetsDraw(chart) {
+    const active = chart.tooltip?.getActiveElements() ?? [];
+    if (active.length === 0) return;
+    const x = active[0].element.x;
+    const { ctx, chartArea } = chart;
+    ctx.save();
+    ctx.strokeStyle = cssVar("--baseline");
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, chartArea.top);
+    ctx.lineTo(x, chartArea.bottom);
+    ctx.stroke();
+    ctx.restore();
+  },
+};
+
+function tooltipPeriod(item) {
+  const date = isoDate(item.parsed.x);
+  const { frequency, forecastFrom } = item.dataset;
+  const isForecast = forecastFrom !== null && date >= forecastFrom;
+  return formatPeriod(date, frequency) + (isForecast ? " (prognose)" : "");
+}
+
+function tooltipOptions(panel) {
+  return {
+    backgroundColor: cssVar("--surface"),
+    borderColor: cssVar("--border"),
+    borderWidth: 1,
+    titleColor: cssVar("--text-secondary"),
+    titleFont: { weight: "normal" },
+    bodyColor: cssVar("--text-primary"),
+    padding: 8,
+    usePointStyle: true,
+    callbacks: {
+      title: items => tooltipPeriod(items[0]),
+      // A regular function: Chart.js passes the tooltip as `this`, which holds all rows.
+      label(item) {
+        const value = formatNumber(item.parsed.y, panel.decimals);
+        const period = tooltipPeriod(item);
+        const ownDate = period === tooltipPeriod(this.dataPoints[0]) ? "" : ` (${period})`;
+        return panel.series.length > 1 ? `${value}  ${item.dataset.label}${ownDate}` : value + ownDate;
+      },
+      labelPointStyle: () => ({ pointStyle: "line", rotation: 0 }),
+    },
+  };
+}
+
+function buildDatasets(panel) {
+  const surface = cssVar("--surface");
+  return panel.series.map((series, index) => {
+    const color = cssVar(`--series-${index + 1}`);
+    const forecastStart = series.forecastFrom ? Date.parse(series.forecastFrom) : null;
+    return {
+      label: series.label,
+      frequency: series.frequency, // our own fields, read by the tooltip
+      forecastFrom: series.forecastFrom,
+      data: series.data.map(([date, value]) => ({ x: Date.parse(date), y: value })),
+      borderColor: color,
+      backgroundColor: color,
+      borderWidth: 2,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      pointHoverBorderWidth: 2,
+      pointHoverBorderColor: surface,
+      // Forecast years are dashed, so a projection never passes for data.
+      segment: forecastStart === null ? undefined : {
+        borderDash: context => (context.p1.parsed.x >= forecastStart ? [4, 4] : undefined),
+      },
+    };
+  });
+}
+
+function chartOptions(panel) {
+  const gridColor = cssVar("--gridline");
+  const zeroLineColor = cssVar("--baseline");
+  const tickColor = cssVar("--text-muted");
+  return {
+    animation: false,
+    maintainAspectRatio: false,
+    parsing: false, // data is already {x, y} ...
+    normalized: true, // ... and sorted by date, so Chart.js can skip that work
+    interaction: { mode: "nearestPerSeries", intersect: false },
+    plugins: { legend: { display: false }, tooltip: tooltipOptions(panel) },
+    scales: {
+      x: {
+        type: "time",
+        min: rangeStart(rangeYears),
+        time: { unit: timeUnit(rangeYears) },
+        grid: { display: false },
+        border: { color: zeroLineColor },
+        ticks: { color: tickColor, maxRotation: 0, maxTicksLimit: 6, callback: formatAxisDate },
+      },
+      y: {
+        border: { display: false },
+        // A stronger line at zero: crossing it matters for spreads, growth and job gains.
+        grid: { color: context => (context.tick.value === 0 ? zeroLineColor : gridColor) },
+        ticks: { color: tickColor, maxTicksLimit: 5, callback: value => AXIS_NUMBER_FORMAT.format(value) },
+      },
+    },
+  };
+}
+
+function renderChartSlot(panel) {
+  const slot = el("div", "chart");
+  const canvas = el("canvas");
+  canvas.setAttribute("role", "img");
+  canvas.setAttribute("aria-label", `Graf: ${panel.title}`);
+  slot.append(canvas);
+  return slot;
+}
+
+function createChart(canvas, panel) {
+  return new Chart(canvas, { type: "line", data: { datasets: buildDatasets(panel) }, options: chartOptions(panel) });
+}
+
+function destroyCharts() {
+  for (const chart of activeCharts) chart.destroy(); // frees the canvases of the previous tab
+  activeCharts = [];
+}
+
+function setRange(years) {
+  rangeYears = years;
+  for (const button of document.querySelectorAll("#range-picker button")) {
+    button.setAttribute("aria-pressed", String(Number(button.dataset.years) === years));
+  }
+  for (const chart of activeCharts) {
+    chart.options.scales.x.min = rangeStart(years);
+    chart.options.scales.x.time.unit = timeUnit(years);
+    chart.update();
+  }
 }
 
 // ---------------------------------------------------------------- sections + routing
@@ -182,8 +383,21 @@ function renderTabs(activeId) {
 }
 
 function renderSection(sectionId) {
+  destroyCharts();
   const panels = DATA.panels.filter(panel => panel.section === sectionId);
-  document.getElementById("panels").replaceChildren(...panels.map(renderCard));
+  const cards = panels.map(renderCard);
+  document.getElementById("panels").replaceChildren(...cards);
+
+  // Charts are created after the cards are in the page: Chart.js needs their size.
+  panels.forEach((panel, index) => {
+    const canvas = cards[index].querySelector("canvas");
+    if (!canvas) return;
+    if (typeof Chart === "undefined") {
+      canvas.parentElement.replaceWith(el("p", "error-text", "⚠ Grafbiblioteket kunne ikke indlæses (ingen internetforbindelse?)"));
+      return;
+    }
+    activeCharts.push(createChart(canvas, panel));
+  });
 }
 
 function route() {
@@ -197,6 +411,14 @@ function init() {
     document.getElementById("load-error").hidden = false;
     return;
   }
+  if (typeof Chart !== "undefined") {
+    Chart.Interaction.modes.nearestPerSeries = nearestPerSeries;
+    Chart.register(crosshairPlugin);
+  }
+  for (const button of document.querySelectorAll("#range-picker button")) {
+    button.addEventListener("click", () => setRange(Number(button.dataset.years)));
+  }
+  setRange(rangeYears);
   window.addEventListener("hashchange", route);
   route();
 }

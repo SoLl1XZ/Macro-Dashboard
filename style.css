@@ -10,6 +10,7 @@
   --gridline: #e1e0d9;
   --baseline: #c3c2b7;
   --border: rgba(11, 11, 11, 0.10);
+  --wash: rgba(11, 11, 11, 0.05);
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
@@ -57,6 +58,39 @@ h1 {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
+}
+
+.range-picker {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--wash);
+  border-radius: 8px;
+}
+
+.range-picker button {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.range-picker button:hover { color: var(--text-primary); }
+
+.range-picker button[aria-pressed="true"] {
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.range-picker button:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
 }
 
 .tabs {
@@ -170,6 +204,12 @@ main {
   margin-right: 3px;
   color: var(--text-muted);
   font-size: 10px;
+}
+
+/* Chart.js sizes the canvas to this box; the height includes the x-axis labels. */
+.chart {
+  position: relative;
+  height: 180px;
 }
 
 .series-table {
