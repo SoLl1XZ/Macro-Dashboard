@@ -110,6 +110,15 @@ function renderHeadline(panel) {
     item.append(el("dt", "", label), renderChange(change, panel));
     deltas.append(item);
   }
+  const percentile = primary.summary.percentile10y; // undefined in data files from before this feature
+  if (percentile !== null && percentile !== undefined) {
+    const rank = Math.round(percentile);
+    const item = el("div", "delta");
+    const value = el("dd", "", `${rank}. percentil`);
+    value.title = `Højere end ca. ${rank} % af målingerne de seneste 10 år`;
+    item.append(el("dt", "", "Niveau, 10 år"), value);
+    deltas.append(item);
+  }
   box.append(row, deltas);
   return box;
 }

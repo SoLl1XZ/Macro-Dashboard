@@ -311,7 +311,8 @@ def rounded(value: float | None) -> float | None:
 def rounded_summary(summary: dict | None) -> dict | None:
     if summary is None:
         return None
-    return {**summary, **{field: rounded(summary[field]) for field in ("last", "change1m", "change1y")}}
+    fields = ("last", "change1m", "change1y", "percentile10y")
+    return {**summary, **{field: rounded(summary[field]) for field in fields}}
 
 
 def source_url(s: Series) -> str | None:

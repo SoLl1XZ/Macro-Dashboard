@@ -1,7 +1,7 @@
 import unittest
 
-from transforms import (change_since, difference, infer_frequency, is_stale, shift_months,
-                        spread, summarize, thin_before, year_over_year)
+from transforms import (change_since, difference, infer_frequency, is_stale, percentile_rank,
+                        shift_months, spread, summarize, thin_before, year_over_year)
 
 
 def monthly(start_year: int, values: list[float]) -> list[tuple[str, float]]:
@@ -78,6 +78,23 @@ class SummarizeTest(unittest.TestCase):
 
     def test_empty_series_has_no_summary(self):
         self.assertIsNone(summarize([], "diff", today="2026-10-07"))
+
+
+class PercentileRankTest(unittest.TestCase):
+    def test_new_high_ranks_near_the_top(self):
+        obs = monthly(2016, [float(i) for i in range(1, 122)])  # 121 months, rising
+        self.assertGreater(percentile_rank(obs), 99)
+
+    def test_unchanged_value_ranks_in_the_middle(self):
+        obs = monthly(2016, [2.0] * 121)
+        self.assertEqual(percentile_rank(obs), 50.0)
+
+    def test_series_younger_than_the_window_has_no_percentile(self):
+        self.assertIsNone(percentile_rank(monthly(2023, [1.0] * 40)))
+
+    def test_too_few_observations_has_no_percentile(self):
+        yearly = [(f"{year}-01-01", float(year)) for year in range(2015, 2027)]
+        self.assertIsNone(percentile_rank(yearly))
 
 
 class InferFrequencyTest(unittest.TestCase):
