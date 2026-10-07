@@ -32,6 +32,14 @@ class CatalogTest(unittest.TestCase):
             else:
                 self.assertIn(s.transform, {None, "yoy", "diff"}, s.key)
 
+    def test_panels_of_a_group_are_adjacent(self):
+        # The page starts a new sub-heading whenever the group changes, so a group split
+        # by another group would show its heading twice.
+        for section_id, _ in SECTIONS:
+            groups_in_order = [p.group for p in PANELS if p.section == section_id and p.group]
+            runs = [group for i, group in enumerate(groups_in_order) if i == 0 or groups_in_order[i - 1] != group]
+            self.assertEqual(len(runs), len(set(runs)), f"{section_id}: {runs}")
+
     def test_derived_series_use_fetched_series_as_input(self):
         fetched_keys = {s.key for s in ALL_SERIES if s.source != "derived"}
         for s in ALL_SERIES:

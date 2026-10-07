@@ -253,7 +253,7 @@ function renderSources(panel) {
 function renderCard(panel) {
   const card = el("article", "card");
   const head = el("header", "card-head");
-  head.append(el("h2", "card-title", panel.title), el("span", "card-unit", panel.unit));
+  head.append(el("h3", "card-title", panel.title), el("span", "card-unit", panel.unit));
   card.append(head, el("p", "card-desc", panel.description), renderHeadline(panel));
   if (panel.series.some(series => series.data.length > 0)) card.append(renderChartSlot(panel));
   if (panel.series.length > 1) card.append(renderSeriesTable(panel));
@@ -486,7 +486,16 @@ function renderSection(sectionId) {
   destroyCharts();
   const panels = DATA.panels.filter(panel => panel.section === sectionId);
   const cards = panels.map(renderCard);
-  document.getElementById("panels").replaceChildren(...cards);
+
+  // A sub-heading goes in front of the first card of each group.
+  const children = [];
+  panels.forEach((panel, index) => {
+    if (panel.group && panel.group !== panels[index - 1]?.group) {
+      children.push(el("h2", "group-heading", panel.group));
+    }
+    children.push(cards[index]);
+  });
+  document.getElementById("panels").replaceChildren(...children);
 
   // Charts are created after the cards are in the page: Chart.js needs their size.
   panels.forEach((panel, index) => {

@@ -170,6 +170,17 @@ main {
   gap: 16px;
 }
 
+/* Spans the whole grid row, so the cards of a group start on a new row. */
+.group-heading {
+  grid-column: 1 / -1;
+  margin: 12px 0 -4px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.group-heading:first-child { margin-top: 0; }
+
 .card {
   min-width: 0; /* lets long content shrink inside the grid instead of overflowing */
   display: flex;
