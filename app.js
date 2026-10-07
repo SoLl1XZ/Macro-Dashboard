@@ -119,7 +119,7 @@ function renderSeriesTable(panel) {
   table.append(el("caption", "visually-hidden", `Seneste værdier: ${panel.title}`));
 
   const headRow = el("tr");
-  for (const [text, className] of [["Serie", ""], ["Seneste", "num"], ["1 år", "num"], ["Periode", "num"]]) {
+  for (const [text, className] of [["Serie", ""], ["Seneste", "num"], ["1 år", "num"], ["Periode", "num period"]]) {
     headRow.append(el("th", className, text));
   }
   const head = el("thead");
@@ -129,17 +129,23 @@ function renderSeriesTable(panel) {
   const body = el("tbody");
   panel.series.forEach((series, index) => {
     const row = el("tr");
-    const name = el("td");
     const swatch = el("span", "swatch");
     swatch.style.setProperty("--swatch", seriesColor(index));
     swatch.setAttribute("aria-hidden", "true");
-    name.append(swatch, series.label);
-    row.append(name);
+    const nameText = el("div", "", series.label);
+    const name = el("div", "series-name");
+    name.append(swatch, nameText);
+    const nameCell = el("td");
+    nameCell.append(name);
+    row.append(nameCell);
 
     if (series.summary) {
       const { last, change1y } = series.summary;
       const note = freshnessNote(series);
-      const period = el("td", "num period", (note ? "⚠ " : "") + periodLabel(series));
+      const periodText = (note ? "⚠ " : "") + periodLabel(series);
+      // On narrow screens the period column is hidden and this copy under the name shows instead.
+      nameText.append(el("span", "period-inline", periodText));
+      const period = el("td", "num period", periodText);
       if (note) period.title = note;
       row.append(
         el("td", "num", formatNumber(last, panel.decimals)),
@@ -421,7 +427,9 @@ function chartOptions(panel) {
         border: { display: false },
         // A stronger line at zero: crossing it matters for spreads, growth and job gains.
         grid: { color: context => (context.tick.value === 0 ? zeroLineColor : gridColor) },
-        ticks: { color: tickColor, maxTicksLimit: 5, callback: value => AXIS_NUMBER_FORMAT.format(value) },
+        // 6, not 5: with 5, a value just below zero (Japan's −0.1 %) needs one extra step,
+        // so Chart.js jumps to a coarser step and leaves half the axis empty.
+        ticks: { color: tickColor, maxTicksLimit: 6, callback: value => AXIS_NUMBER_FORMAT.format(value) },
       },
     },
   };
@@ -513,6 +521,8 @@ function init() {
   setRange(rangeYears);
   renderUpdated();
   window.addEventListener("hashchange", route);
+  // Chart colours are read from CSS when a chart is created, so redraw if the theme flips.
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", route);
   route();
 }
 

@@ -24,6 +24,31 @@
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+/* Dark mode follows the system setting. The series colours are the same hues, stepped
+   for the dark surface (validated separately; all clear 3:1 contrast on #1a1a19). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --gridline: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --wash: rgba(255, 255, 255, 0.06);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+  }
+}
+
 * { box-sizing: border-box; }
 
 body {
@@ -254,15 +279,23 @@ main {
 
 .series-table .period { color: var(--text-secondary); }
 
+/* Keeps the colour key on the first line of the name, even when the name wraps. */
+.series-name {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .swatch {
-  display: inline-block;
+  flex: none;
   width: 14px;
   height: 3px;
-  margin-right: 8px;
+  margin-top: 0.55em;
   border-radius: 2px;
   background: var(--swatch);
-  vertical-align: middle;
 }
+
+.period-inline { display: none; }
 
 .error-text {
   color: var(--text-secondary);
@@ -291,6 +324,22 @@ main {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+}
+
+/* ------------------------------------------------------------------- phones */
+
+@media (max-width: 600px) {
+  /* A sticky header would take a fifth of a phone screen; let it scroll away. */
+  .topbar { position: static; }
+
+  /* Four columns don't fit: the period moves under the series name instead. */
+  .series-table .period { display: none; }
+
+  .period-inline {
+    display: block;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
 }
 
 .visually-hidden {
