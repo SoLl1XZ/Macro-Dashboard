@@ -1,0 +1,76 @@
+# Fetches fresh macro data every morning, commits it, and publishes the dashboard to GitHub Pages.
+name: Update data and publish
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC = 08:00 Danish summer time, 07:00 winter time
+  workflow_dispatch: # adds a "Run workflow" button under the Actions tab
+  push:
+    branches: [main] # publish code changes right away
+
+# Never run two updates at once: both would try to commit data.js.
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to commit data/data.js
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Run unit tests
+        run: python -m unittest discover tests
+
+      - name: Fetch data
+        run: python fetch_data.py
+
+      # Pushes made with the workflow's own token don't trigger new runs, so this can't loop.
+      - name: Commit data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/data.js
+          if git diff --cached --quiet; then
+            echo "No data changes."
+          else
+            git commit -m "Update data $(date -u +%Y-%m-%d)"
+            git pull --rebase
+            git push
+          fi
+
+  deploy:
+    needs: update
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main # includes the data commit made by the update job
+
+      # Publish only what the page needs, not the Python code and tests.
+      - name: Collect site files
+        run: |
+          mkdir _site
+          cp index.html app.js style.css _site/
+          cp -r data _site/
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v5

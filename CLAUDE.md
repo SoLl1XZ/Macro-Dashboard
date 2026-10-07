@@ -44,6 +44,14 @@ python3 -m unittest discover tests
 - FRED tillader ikke browser-kald (ingen CORS), derfor hentes alt i Python frem for i browseren.
 - Automatisk opdatering sker via GitHub Actions; siden publiceres med GitHub Pages.
 
+## GitHub og automatisk opdatering
+
+- Repo: https://github.com/SoLl1XZ/Macro-Dashboard (offentligt). Siden: https://soll1xz.github.io/Macro-Dashboard/
+- `.github/workflows/update.yml` kører kl. 06:00 UTC, ved push til `main` og manuelt (`gh workflow run update.yml`):
+  tests → `fetch_data.py` → commit af `data/data.js` → publicering af `index.html`, `app.js`, `style.css`, `data/` til Pages.
+- Commits bruger noreply-adressen `222303744+SoLl1XZ@users.noreply.github.com` (sat i repoets lokale git-config), aldrig gmail.
+- Spørg altid før `git push`. Hent bot-commits med `git pull` før lokale ændringer.
+
 ## Kendte faldgruber
 
 - **User-Agent:** FRED og IMF blokerer ukendte User-Agents, OECD blokerer Pythons standard. `curl/8.7.1` virker hos alle (se `USER_AGENT` i `fetch_data.py`).
