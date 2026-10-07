@@ -12,9 +12,10 @@ import urllib.parse
 import urllib.request
 from collections import defaultdict
 from collections.abc import Callable, Iterable
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from events import calendar_warnings, upcoming_events
 from indicators import (EURO_AREA_PEAKS_AND_TROUGHS, PANELS, RECESSIONS_BY_SECTION, SECTIONS,
                         Panel, Series)
 from transforms import (Observation, difference, infer_frequency, is_stale, peak_trough_periods,
@@ -388,6 +389,27 @@ def build_payload(panels: list[Panel], processed: dict[str, list[Observation]],
     }
 
 
+def fetch_hicp_flash_dates(today: str) -> list[str]:
+    """Release dates of Eurostat's flash estimate of euro area inflation, from its calendar."""
+    end = (date.fromisoformat(today) + timedelta(days=400)).isoformat()
+    url = ("https://ec.europa.eu/eurostat/o/calendars/eventsJson?theme=0&category=0&keywords="
+           f"&isEuroindicator=&authorInclude=&authorExclude=&start={today}T00:00:00Z"
+           f"&end={end}T00:00:00Z&timeZone=UTC")
+    events = json.loads(http_get(url))
+    return sorted({event["start"][:10] for event in events
+                   if "flash estimate inflation euro area" in event["title"].lower()})
+
+
+def calendar_events(previous: dict | None, today: str) -> list[dict]:
+    try:
+        flash_dates = fetch_hicp_flash_dates(today)
+    except Exception as error:  # keep the dates from the last run rather than none
+        print(f"  FAIL Eurostat calendar: {describe(error)}")
+        flash_dates = [event["date"] for event in (previous or {}).get("events", [])
+                       if event["institution"] == "Eurostat"]
+    return upcoming_events(flash_dates, today)
+
+
 def fetch_recessions(previous: dict | None) -> dict[str, list[list[str]]]:
     """Recession periods per dating source, as [start, end) date pairs."""
     euro_area = [list(period) for period in peak_trough_periods(EURO_AREA_PEAKS_AND_TROUGHS)]
@@ -461,6 +483,8 @@ def main() -> int:
     previous = load_previous_payload(OUTPUT_PATH)
     reused = reuse_previous_data(payload, previous, today)
     payload["recessions"] = fetch_recessions(previous)
+    payload["events"] = calendar_events(previous, today)
+    payload["calendarWarnings"] = calendar_warnings(today)
     write_data_js(payload, OUTPUT_PATH)
     for key, message in errors.items():
         print(f"  FAIL {key}: {message}")

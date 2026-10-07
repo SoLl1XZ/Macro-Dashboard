@@ -681,9 +681,44 @@ function renderHeatLegend() {
   return legend;
 }
 
+const EVENTS_SHOWN = 8;
+const EVENT_DATE_FORMAT = new Intl.DateTimeFormat("da-DK", {
+  weekday: "short", day: "numeric", month: "short", timeZone: "UTC",
+});
+
+function todayIso() {
+  return new Date().toLocaleDateString("sv-SE"); // Swedish locale formats dates as YYYY-MM-DD
+}
+
+function daysUntilText(isoDate) {
+  const days = Math.round((Date.parse(isoDate) - Date.parse(todayIso())) / 86_400_000);
+  return days === 0 ? "i dag" : days === 1 ? "i morgen" : `om ${days} dage`;
+}
+
+function renderEvents() {
+  const nodes = [el("h2", "group-heading", "Kommende begivenheder")];
+  for (const warning of DATA.calendarWarnings ?? []) nodes.push(el("p", "section-note", `⚠ ${warning}`));
+  // data.js may be a few days old, so drop events that have passed since it was made.
+  const upcoming = (DATA.events ?? []).filter(event => event.date >= todayIso()).slice(0, EVENTS_SHOWN);
+  const list = el("ul", "events");
+  for (const event of upcoming) {
+    const item = el("li", "event");
+    item.append(
+      el("span", "event-date", EVENT_DATE_FORMAT.format(new Date(Date.parse(event.date)))),
+      el("span", "event-institution", event.institution),
+      el("span", "event-title", event.title),
+      el("span", "event-until", daysUntilText(event.date)),
+    );
+    list.append(item);
+  }
+  nodes.push(upcoming.length ? list : el("p", "section-note", "Ingen kommende begivenheder i kalenderen."));
+  return nodes;
+}
+
 function renderSignals() {
   destroyCharts();
   document.getElementById("panels").replaceChildren(
+    ...renderEvents(),
     el("h2", "group-heading", "Største bevægelser denne uge"),
     el("p", "section-note",
        "Ændringen over 7 dage målt mod en typisk uge de seneste 10 år. Kun serier med dags- eller ugedata."),

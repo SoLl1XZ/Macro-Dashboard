@@ -391,10 +391,12 @@ main {
 
 /* ------------------------------------------------------------------ signals */
 
+.events,
 .movers,
 .heat-legend,
 .heatmap { grid-column: 1 / -1; }
 
+.events,
 .movers {
   margin: 0;
   padding: 0;
@@ -404,7 +406,22 @@ main {
   border-radius: var(--radius);
 }
 
-.movers li + li { border-top: 1px solid var(--gridline); }
+.movers li + li,
+.event + .event { border-top: 1px solid var(--gridline); }
+
+.event {
+  display: grid;
+  grid-template-columns: 110px 120px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
+.event-date { font-variant-numeric: tabular-nums; }
+.event-institution { font-weight: 600; }
+.event-title { color: var(--text-secondary); }
+.event-until { color: var(--text-muted); font-size: 13px; text-align: right; }
 
 .mover {
   width: 100%;
@@ -575,6 +592,10 @@ main {
 
   /* Name and section on one line, change and size on the next. */
   .mover { grid-template-columns: minmax(0, 1fr) auto; }
+
+  /* Date and institution on one line, what happens and when on the next. */
+  .event { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .event-title { grid-column: 1 / 3; }
 }
 
 .visually-hidden {
