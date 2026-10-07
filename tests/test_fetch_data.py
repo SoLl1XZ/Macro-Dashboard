@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -115,6 +116,35 @@ class BuildPayloadTest(unittest.TestCase):
         observations = {"x": [("1999-06-01", 1.0), ("2000-01-01", 2.0)]}
         payload = build_payload([panel], observations, {}, today="2026-10-07")
         self.assertEqual(payload["panels"][0]["series"][0]["data"], [["2000-01-01", 2.0]])
+
+
+class FetchEurostatTest(unittest.TestCase):
+    """fetch_eurostat with a canned JSON-stat answer instead of the network."""
+
+    def answer(self, sizes: dict, values: dict) -> str:
+        times = {"2026-07": 0, "2026-08": 1}
+        return json.dumps({
+            "id": list(sizes), "size": list(sizes.values()), "value": values,
+            "dimension": {"time": {"category": {"index": times}}},
+        })
+
+    def test_values_are_matched_to_their_periods(self):
+        text = self.answer({"geo": 1, "time": 2}, {"0": 1.5, "1": 2.5})
+        with mock.patch.object(fetch_data, "http_get", return_value=text):
+            self.assertEqual(fetch_data.fetch_eurostat("ds?geo=DE"),
+                             [("2026-07-01", 1.5), ("2026-08-01", 2.5)])
+
+    def test_unknown_code_says_so(self):
+        text = self.answer({"geo": 0, "time": 2}, {})
+        with mock.patch.object(fetch_data, "http_get", return_value=text):
+            with self.assertRaisesRegex(ValueError, "may not exist"):
+                fetch_data.fetch_eurostat("ds?geo=EA")
+
+    def test_unfixed_dimension_is_ambiguous(self):
+        text = self.answer({"unit": 2, "time": 2}, {})
+        with mock.patch.object(fetch_data, "http_get", return_value=text):
+            with self.assertRaisesRegex(ValueError, "Ambiguous"):
+                fetch_data.fetch_eurostat("ds?geo=DE")
 
 
 class SourceUrlTest(unittest.TestCase):

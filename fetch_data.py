@@ -132,6 +132,8 @@ def fetch_eurostat(query: str) -> list[Observation]:
     # JSON-stat stores all values in one flat list. When every dimension except time is
     # fixed to a single value, a value's flat position equals its position on the time axis.
     sizes = dict(zip(data["id"], data["size"]))
+    if any(size == 0 for size in sizes.values()):
+        raise ValueError(f"Eurostat returned nothing; a code in the filter may not exist: {sizes}")
     if any(size != 1 for dimension, size in sizes.items() if dimension != "time"):
         raise ValueError(f"Ambiguous Eurostat query, fix every dimension except time: {sizes}")
     position_by_period = data["dimension"]["time"]["category"]["index"]
