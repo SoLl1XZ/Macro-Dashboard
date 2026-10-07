@@ -111,6 +111,12 @@ class BuildPayloadTest(unittest.TestCase):
         payload = build_payload([panel], {"gdp": [("2026-01-01", 3.1)]}, {}, today="2026-10-07")
         self.assertEqual(payload["panels"][0]["series"][0]["forecastFrom"], "2026-01-01")
 
+    def test_reference_lines_are_passed_to_the_page(self):
+        panel = Panel("p", "us", "Test", "%", "Beskrivelse", (Series("x", "X", "fred", "X"),),
+                      reference_lines=((2.0, "Mål 2 %"),))
+        payload = build_payload([panel], {"x": [("2026-01-01", 2.5)]}, {}, today="2026-10-07")
+        self.assertEqual(payload["panels"][0]["referenceLines"], [{"value": 2.0, "label": "Mål 2 %"}])
+
     def test_observations_before_display_start_are_dropped(self):
         panel = self.make_panel(Series("x", "X", "fred", "X"))
         observations = {"x": [("1999-06-01", 1.0), ("2000-01-01", 2.0)]}

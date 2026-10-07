@@ -347,6 +347,35 @@ const crosshairPlugin = {
   },
 };
 
+// Dashed horizontal lines for targets and thresholds (e.g. a 2 % inflation target).
+// Dashed on purpose, so they read as a threshold and not as one more gridline.
+const referenceLinesPlugin = {
+  id: "referenceLines",
+  beforeDatasetsDraw(chart, args, options) {
+    const lines = options.lines ?? [];
+    if (lines.length === 0) return;
+    const { ctx, chartArea, scales } = chart;
+    ctx.save();
+    ctx.strokeStyle = cssVar("--text-muted");
+    ctx.fillStyle = cssVar("--text-muted");
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.font = "11px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "bottom";
+    for (const { value, label } of lines) {
+      const y = scales.y.getPixelForValue(value);
+      if (y < chartArea.top || y > chartArea.bottom) continue;
+      ctx.beginPath();
+      ctx.moveTo(chartArea.left, y);
+      ctx.lineTo(chartArea.right, y);
+      ctx.stroke();
+      ctx.fillText(label, chartArea.right - 2, y - 2);
+    }
+    ctx.restore();
+  },
+};
+
 function tooltipPeriod(item) {
   const date = isoDate(item.parsed.x);
   const { frequency, forecastFrom } = item.dataset;
@@ -407,13 +436,19 @@ function chartOptions(panel) {
   const gridColor = cssVar("--gridline");
   const zeroLineColor = cssVar("--baseline");
   const tickColor = cssVar("--text-muted");
+  const referenceLines = panel.referenceLines ?? []; // missing in data files from before this feature
+  const referenceValues = referenceLines.map(line => line.value);
   return {
     animation: false,
     maintainAspectRatio: false,
     parsing: false, // data is already {x, y} ...
     normalized: true, // ... and sorted by date, so Chart.js can skip that work
     interaction: { mode: "nearestPerSeries", intersect: false },
-    plugins: { legend: { display: false }, tooltip: tooltipOptions(panel) },
+    plugins: {
+      legend: { display: false },
+      tooltip: tooltipOptions(panel),
+      referenceLines: { lines: referenceLines },
+    },
     scales: {
       x: {
         type: "time",
@@ -424,6 +459,10 @@ function chartOptions(panel) {
         ticks: { color: tickColor, maxRotation: 0, maxTicksLimit: 6, callback: formatAxisDate },
       },
       y: {
+        // Stretch the axis so every reference line stays visible, e.g. a 2 % target
+        // when inflation has been above 3 % for the whole period.
+        suggestedMin: referenceValues.length ? Math.min(...referenceValues) : undefined,
+        suggestedMax: referenceValues.length ? Math.max(...referenceValues) : undefined,
         border: { display: false },
         // A stronger line at zero: crossing it matters for spreads, growth and job gains.
         grid: { color: context => (context.tick.value === 0 ? zeroLineColor : gridColor) },
@@ -522,7 +561,7 @@ function init() {
   }
   if (typeof Chart !== "undefined") {
     Chart.Interaction.modes.nearestPerSeries = nearestPerSeries;
-    Chart.register(crosshairPlugin);
+    Chart.register(crosshairPlugin, referenceLinesPlugin);
   }
   for (const button of document.querySelectorAll("#range-picker button")) {
     button.addEventListener("click", () => setRange(Number(button.dataset.years)));

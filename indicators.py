@@ -53,6 +53,12 @@ class Panel:
     decimals: int = 2  # values >= 1000 are always shown without decimals
     # Optional sub-heading within the section. Panels of one group must be adjacent.
     group: str | None = None
+    # Horizontal reference lines as (value, label), e.g. an inflation target.
+    reference_lines: tuple[tuple[float, str], ...] = ()
+
+
+INFLATION_TARGET_FED = ((2.0, "Fed-mål 2 %"),)
+INFLATION_TARGET_ECB = ((2.0, "ECB-mål 2 %"),)
 
 
 def S(key: str, label: str, source: str, query, transform: str | None = None) -> Series:
@@ -125,7 +131,8 @@ PANELS: list[Panel] = [
           "Forbrugerpriser (CPI) og Fed's foretrukne mål: kerne-PCE. Fed sigter efter 2 %.",
           (S("us_cpi", "CPI", "fred", "CPIAUCSL", "yoy"),
            S("us_core_cpi", "Kerne-CPI", "fred", "CPILFESL", "yoy"),
-           S("us_core_pce", "Kerne-PCE", "fred", "PCEPILFE", "yoy"))),
+           S("us_core_pce", "Kerne-PCE", "fred", "PCEPILFE", "yoy")),
+          reference_lines=INFLATION_TARGET_FED),
     Panel("us_breakeven", "us", "Inflationsforventning (10 år)", "%",
           "Markedets forventede gennemsnitlige inflation de næste 10 år (breakeven).",
           (S("us_be10", "10-årig breakeven", "fred", "T10YIE"),)),
@@ -198,7 +205,7 @@ PANELS: list[Panel] = [
            S("ea_core", "Kerne (ekskl. energi og fødevarer)", "eurostat",
              "prc_hicp_minr?geo=EA&coicop18=TOT_X_NRG_FOOD&unit=RCH_A"),
            S("ea_services", "Serviceydelser", "eurostat", "prc_hicp_minr?geo=EA&coicop18=SERV&unit=RCH_A")),
-          group="Inflation"),
+          group="Inflation", reference_lines=INFLATION_TARGET_ECB),
     # Eurostat rather than ECB: the ECB's copy of this series lagged a quarter behind.
     Panel("ea_gdp", "europe", "BNP-vækst (eurozonen)", "% år/år",
           "Real BNP-vækst sammenlignet med samme kvartal året før.",
@@ -213,7 +220,7 @@ PANELS: list[Panel] = [
     Panel("ea_sentiment", "europe", "Økonomisk stemning (ESI)", "Indeks",
           "EU-Kommissionens samlede stemningsindikator for erhverv og forbrugere. 100 = langsigtet gennemsnit.",
           (S("ea_esi", "ESI (eurozonen)", "eurostat", "ei_bssi_m_r2?geo=EA21&indic=BS-ESI-I&s_adj=SA"),),
-          group="Vækst og aktivitet"),
+          group="Vækst og aktivitet", reference_lines=((100.0, "Gennemsnit"),)),
     Panel("ea_industry", "europe", "Industriproduktion", "% år/år",
           "Produktion i industrien (ekskl. byggeri). Tyskland er eurozonens industrielle motor.",
           (S("de_ip", "Tyskland", "eurostat", "sts_inpr_m?geo=DE&indic_bt=PRD&nace_r2=B-D&s_adj=CA&unit=PCH_SM"),
@@ -231,7 +238,7 @@ PANELS: list[Panel] = [
            S("fr_hicp", "Frankrig", "eurostat", "prc_hicp_minr?geo=FR&coicop18=TOTAL&unit=RCH_A"),
            S("it_hicp", "Italien", "eurostat", "prc_hicp_minr?geo=IT&coicop18=TOTAL&unit=RCH_A"),
            S("es_hicp", "Spanien", "eurostat", "prc_hicp_minr?geo=ES&coicop18=TOTAL&unit=RCH_A")),
-          group="Lande"),
+          group="Lande", reference_lines=INFLATION_TARGET_ECB),
     Panel("eu_country_unemployment", "europe", "Ledighed pr. land", "%",
           "Sæsonkorrigeret arbejdsløshed (15–74 år).",
           (S("de_unrate", "Tyskland", "eurostat", "une_rt_m?geo=DE&age=TOTAL&sex=T&s_adj=SA&unit=PC_ACT"),
@@ -260,7 +267,7 @@ PANELS: list[Panel] = [
            S("fr_balance", "Frankrig", "imf_weo", "GGXCNL_NGDP/FRA"),
            S("it_balance", "Italien", "imf_weo", "GGXCNL_NGDP/ITA"),
            S("es_balance", "Spanien", "imf_weo", "GGXCNL_NGDP/ESP")),
-          group="Lande"),
+          group="Lande", reference_lines=((-3.0, "EU-grænse −3 %"),)),
     Panel("ea_lending", "europe", "Udlånsrenter i eurozonen", "%",
           "Bankernes samlede lånerente for virksomheder og for boliglån til husholdninger.",
           (S("ea_lend_nfc", "Virksomheder", "ecb", "MIR/M.U2.B.A2I.AM.R.A.2240.EUR.N"),
@@ -311,7 +318,8 @@ PANELS: list[Panel] = [
           (S("dk_ecb", "Danmark − ECB", "derived", ("dk_cd", "ecb_dfr"), "spread"),)),
     Panel("eurdkk", "denmark", "EUR/DKK (fastkurs)", "DKK pr. EUR",
           "Kronen er bundet til euroen omkring centralkursen 7,46038.",
-          (S("eurdkk", "EUR/DKK", "ecb", "EXR/D.DKK.EUR.SP00.A"),), change="pct", decimals=4),
+          (S("eurdkk", "EUR/DKK", "ecb", "EXR/D.DKK.EUR.SP00.A"),), change="pct", decimals=4,
+          reference_lines=((7.46038, "Centralkurs 7,46038"),)),
     Panel("dk_10y", "denmark", "10-årig statsrente", "%",
           "Dansk 10-årig statsrente sammenlignet med Tyskland.",
           (S("dk_10y", "Danmark", "oecd_lt", "DNK"),
@@ -322,7 +330,9 @@ PANELS: list[Panel] = [
              "DNRNURI?DATA=AL51EFFR&INDSEK=1400&VALUTA=Z01&LØBETID1=ALLE&RENTFIX=ALLE&LAANSTR=ALLE"),)),
     Panel("dk_inflation", "denmark", "Inflation (forbrugerpriser)", "% år/år",
           "Ændring i forbrugerprisindekset sammenlignet med samme måned året før.",
-          (S("dk_cpi", "Forbrugerprisindeks", "statbank", "PRIS01?VAREGR=000000&ENHED=300"),)),
+          (S("dk_cpi", "Forbrugerprisindeks", "statbank", "PRIS01?VAREGR=000000&ENHED=300"),),
+          # Denmark has no target of its own; the fixed exchange rate imports the ECB's.
+          reference_lines=INFLATION_TARGET_ECB),
     Panel("dk_unemployment", "denmark", "Ledighed", "% af arbejdsstyrken",
           "Sæsonkorrigeret bruttoledighed.",
           (S("dk_unrate", "Ledighed", "statbank", "AUS08?OMRÅDE=000&SAESONFAK=9"),)),

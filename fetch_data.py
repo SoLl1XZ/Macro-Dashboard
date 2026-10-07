@@ -376,6 +376,7 @@ def build_payload(panels: list[Panel], processed: dict[str, list[Observation]],
                 "change": panel.change,
                 "decimals": panel.decimals,
                 "group": panel.group,
+                "referenceLines": [{"value": value, "label": label} for value, label in panel.reference_lines],
                 "series": [series_payload(s, panel, processed, errors, today) for s in panel.series],
             }
             for panel in panels
