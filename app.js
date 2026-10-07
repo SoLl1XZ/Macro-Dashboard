@@ -697,6 +697,168 @@ function renderSignals() {
   );
 }
 
+// ---------------------------------------------------------------------- compare tab
+// Two series side by side, never on two y-axes: a second y-scale can be stretched to make
+// any two lines look related. Same unit -> one axis. Different units -> two charts with a
+// shared time axis. Index mode rebases both to 100 at a common start date.
+
+const COMPARE_TAB = { id: "compare", title: "Sammenlign" };
+const DEFAULT_COMPARISON = { a: "de_10y", b: "us_10y" }; // German Bund vs US Treasury
+
+function seriesLookup() {
+  const lookup = new Map();
+  for (const panel of DATA.panels) {
+    for (const series of panel.series) {
+      if (series.data.length > 0) lookup.set(series.key, { panel, series });
+    }
+  }
+  return lookup;
+}
+
+function entryName({ panel, series }) {
+  return panel.series.length > 1 ? `${panel.title}: ${series.label}` : panel.title;
+}
+
+function visiblePoints(series) {
+  const start = rangeStart(rangeYears) ?? -Infinity;
+  return series.data.filter(([date]) => Date.parse(date) >= start);
+}
+
+// Rebasing to 100 only means something for values that are positive throughout.
+function canIndex(entry) {
+  const points = visiblePoints(entry.series);
+  return points.length > 0 && points.every(([, value]) => value > 0);
+}
+
+function rebaseToCommonStart(entries) {
+  const commonStart = entries.map(entry => visiblePoints(entry.series)[0][0]).sort().at(-1);
+  const series = entries.map(entry => {
+    const points = entry.series.data.filter(([date]) => date >= commonStart);
+    const base = points[0][1];
+    return { ...entry.series, label: entryName(entry), data: points.map(([date, value]) => [date, value / base * 100]) };
+  });
+  return { commonStart, series };
+}
+
+function comparePanel(title, unit, decimals, series) {
+  return { id: "compare", section: COMPARE_TAB.id, title, unit, decimals, change: "diff", referenceLines: [], series };
+}
+
+function renderSeriesSelect(label, selectedKey, lookup, onChange) {
+  const field = el("label", "compare-field");
+  const select = el("select");
+  for (const section of DATA.sections) {
+    const group = el("optgroup");
+    group.label = section.title;
+    for (const [key, entry] of lookup) {
+      if (entry.panel.section !== section.id) continue;
+      const option = el("option", "", entryName(entry));
+      option.value = key;
+      option.selected = key === selectedKey;
+      group.append(option);
+    }
+    select.append(group);
+  }
+  select.addEventListener("change", () => onChange(select.value));
+  field.append(el("span", "compare-label", label), select);
+  return field;
+}
+
+function renderCompareLegend(series) {
+  const legend = el("div", "compare-legend");
+  series.forEach((item, index) => {
+    const entry = el("span", "compare-legend-item");
+    const swatch = el("span", "swatch");
+    swatch.style.setProperty("--swatch", seriesColor(index));
+    swatch.setAttribute("aria-hidden", "true");
+    entry.append(swatch, item.label);
+    legend.append(entry);
+  });
+  return legend;
+}
+
+// Returns the cards to show plus the panels to draw, as {card, panel} pairs.
+function comparisonCharts(entries, useIndex) {
+  const [a, b] = entries;
+  const decimals = Math.max(a.panel.decimals, b.panel.decimals);
+  const chartCard = (panel, legend) => {
+    const card = el("article", "card compare-card");
+    card.append(el("h3", "card-title", panel.title));
+    if (legend) card.append(legend);
+    card.append(renderChartSlot(panel));
+    return { card, panel };
+  };
+
+  if (useIndex) {
+    const { commonStart, series } = rebaseToCommonStart(entries);
+    const panel = comparePanel(`Indeks: begge = 100 den ${formatPeriod(commonStart, "D")}`, "Indeks", 1, series);
+    return [chartCard(panel, renderCompareLegend(series))];
+  }
+  const named = entries.map(entry => ({ ...entry.series, label: entryName(entry) }));
+  if (a.panel.unit === b.panel.unit) {
+    const panel = comparePanel(`Samme enhed (${a.panel.unit}): én akse`, a.panel.unit, decimals, named);
+    return [chartCard(panel, renderCompareLegend(named))];
+  }
+  return entries.map((entry, index) =>
+    chartCard(comparePanel(`${named[index].label} (${entry.panel.unit})`, entry.panel.unit,
+                           entry.panel.decimals, [named[index]])));
+}
+
+function renderCompare(params) {
+  destroyCharts();
+  const lookup = seriesLookup();
+  const pick = (name) => (lookup.has(params.get(name)) ? params.get(name) : DEFAULT_COMPARISON[name]);
+  const choice = { a: pick("a"), b: pick("b"), index: params.get("index") === "1" ? "1" : "0" };
+  const entries = [lookup.get(choice.a), lookup.get(choice.b)];
+  const indexPossible = entries.every(canIndex);
+  const useIndex = choice.index === "1" && indexPossible;
+  const update = change => {
+    location.hash = hashFor(COMPARE_TAB.id, rangeYears, { ...choice, ...change });
+  };
+
+  const indexToggle = el("label", "compare-toggle");
+  const checkbox = el("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = useIndex;
+  checkbox.disabled = !indexPossible;
+  checkbox.addEventListener("change", () => update({ index: checkbox.checked ? "1" : "0" }));
+  indexToggle.append(checkbox, "Indeks (start = 100)");
+
+  const controls = el("div", "compare-controls");
+  controls.append(
+    renderSeriesSelect("Serie A", choice.a, lookup, key => update({ a: key })),
+    renderSeriesSelect("Serie B", choice.b, lookup, key => update({ b: key })),
+    indexToggle,
+  );
+
+  const notes = [];
+  if (entries[0].panel.unit !== entries[1].panel.unit && !useIndex) {
+    notes.push("Forskellige enheder: vist som to grafer med fælles tidsakse, aldrig med to y-akser.");
+  }
+  if (!indexPossible) {
+    const notPositive = entries.filter(entry => !canIndex(entry)).map(entryName);
+    notes.push(`Indeks er ikke muligt: ${notPositive.join(" og ")} har værdier på nul eller derunder i perioden.`);
+  }
+  const charts = comparisonCharts(entries, useIndex);
+
+  document.getElementById("panels").replaceChildren(
+    el("h2", "group-heading", "Sammenlign to serier"),
+    controls,
+    ...notes.map(note => el("p", "section-note", note)),
+    ...charts.map(chart => chart.card),
+  );
+
+  if (typeof Chart === "undefined") return;
+  const created = charts.map(({ card, panel }) => createChart(card.querySelector("canvas"), panel));
+  // Two stacked charts share one time axis, so their dates line up vertically.
+  const latest = Math.max(...entries.map(entry => Date.parse(entry.series.data.at(-1)[0])));
+  for (const chart of created) {
+    chart.options.scales.x.max = latest;
+    chart.update();
+  }
+  activeCharts.push(...created);
+}
+
 // ---------------------------------------------------------------- sections + routing
 
 // The URL is the single source of truth for what is shown: "#europe?range=10" means the
@@ -706,21 +868,27 @@ const VALID_RANGES = [1, 5, 10, 0];
 
 // The Signals overview is a tab of the page only; the data sections come from data.js.
 function allTabs() {
-  return [SIGNALS_TAB, ...DATA.sections];
+  return [SIGNALS_TAB, ...DATA.sections, COMPARE_TAB];
 }
 
 function parseHash() {
   const [sectionPart, query = ""] = location.hash.slice(1).split("?");
   const params = new URLSearchParams(query);
+  const hasRange = params.has("range");
   const range = Number(params.get("range"));
+  params.delete("range");
   return {
     sectionId: allTabs().some(tab => tab.id === sectionPart) ? sectionPart : SIGNALS_TAB.id,
-    rangeYears: params.has("range") && VALID_RANGES.includes(range) ? range : DEFAULT_RANGE_YEARS,
+    rangeYears: hasRange && VALID_RANGES.includes(range) ? range : DEFAULT_RANGE_YEARS,
+    params, // anything else, e.g. the series chosen on the Compare tab
   };
 }
 
-function hashFor(sectionId, years) {
-  return years === DEFAULT_RANGE_YEARS ? `#${sectionId}` : `#${sectionId}?range=${years}`;
+function hashFor(sectionId, years, extra = {}) {
+  const params = new URLSearchParams(extra);
+  if (years !== DEFAULT_RANGE_YEARS) params.set("range", years);
+  const query = params.toString();
+  return `#${sectionId}${query ? `?${query}` : ""}`;
 }
 
 function renderTabs(activeId) {
@@ -765,12 +933,14 @@ function renderSection(sectionId) {
 }
 
 function route() {
-  const { sectionId, rangeYears: years } = parseHash();
+  const { sectionId, rangeYears: years, params } = parseHash();
   rangeYears = years;
   updateRangeButtons();
   renderTabs(sectionId);
   if (sectionId === SIGNALS_TAB.id) {
     renderSignals();
+  } else if (sectionId === COMPARE_TAB.id) {
+    renderCompare(params);
   } else {
     renderSection(sectionId);
   }
@@ -796,7 +966,8 @@ function init() {
   for (const button of document.querySelectorAll("#range-picker button")) {
     // Only changes the URL; the hashchange event then redraws the page from it.
     button.addEventListener("click", () => {
-      location.hash = hashFor(parseHash().sectionId, Number(button.dataset.years));
+      const { sectionId, params } = parseHash();
+      location.hash = hashFor(sectionId, Number(button.dataset.years), Object.fromEntries(params));
     });
   }
   renderUpdated();
