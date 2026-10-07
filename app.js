@@ -297,6 +297,7 @@ function renderCsvButton(panel) {
 
 function renderCard(panel) {
   const card = el("article", "card");
+  card.id = `panel-${panel.id}`; // target for the links on the Signals tab
   const head = el("header", "card-head");
   head.append(el("h3", "card-title", panel.title), el("span", "card-unit", panel.unit));
   card.append(head, el("p", "card-desc", panel.description), renderHeadline(panel));
@@ -576,6 +577,126 @@ function updateRangeButtons() {
   }
 }
 
+// ---------------------------------------------------------------------- signals tab
+
+const SIGNALS_TAB = { id: "signals", title: "Signaler" };
+const MOVERS_SHOWN = 8;
+const HEAT_LEGEND = [
+  ["neg-strong", "Meget lavt"], ["neg-weak", "Lavt"], ["neutral", "Normalt"],
+  ["pos-weak", "Højt"], ["pos-strong", "Meget højt"], ["none", "Ingen 10-års historik"],
+];
+let scrollTargetPanelId = null; // set when a signal is clicked, used after the section renders
+let shownSectionId = null; // the tab currently on screen
+
+// The z-score bins of the heat scale: |z| < 0.5 is normal, beyond 1.5 is unusual.
+function heatLevel(z) {
+  if (z === null || z === undefined) return "none";
+  if (z <= -1.5) return "neg-strong";
+  if (z <= -0.5) return "neg-weak";
+  if (z < 0.5) return "neutral";
+  if (z < 1.5) return "pos-weak";
+  return "pos-strong";
+}
+
+function formatSigned(value, decimals) {
+  const rounded = Number(value.toFixed(decimals));
+  const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "±";
+  return sign + formatNumber(Math.abs(rounded), decimals);
+}
+
+function panelName(panel) {
+  return panel.series.length > 1 ? `${panel.title}: ${panel.series[0].label}` : panel.title;
+}
+
+function sectionTitle(sectionId) {
+  return DATA.sections.find(section => section.id === sectionId)?.title ?? "";
+}
+
+function goToPanel(panel) {
+  scrollTargetPanelId = panel.id;
+  location.hash = hashFor(panel.section, rangeYears);
+}
+
+function renderMovers() {
+  const movers = DATA.panels
+    .filter(panel => typeof panel.series[0].summary?.weekMoveZ === "number")
+    .sort((a, b) => Math.abs(b.series[0].summary.weekMoveZ) - Math.abs(a.series[0].summary.weekMoveZ))
+    .slice(0, MOVERS_SHOWN);
+  const list = el("ol", "movers");
+  for (const panel of movers) {
+    const { weekChange, weekMoveZ } = panel.series[0].summary;
+    const button = el("button", "mover");
+    button.type = "button";
+    button.append(
+      el("span", "mover-name", panelName(panel)),
+      el("span", "mover-section", sectionTitle(panel.section)),
+      el("span", "mover-change", formatChange(weekChange, panel)),
+      el("span", "mover-size", `${formatNumber(Math.abs(weekMoveZ), 1)} × en typisk uge`),
+    );
+    button.addEventListener("click", () => goToPanel(panel));
+    const item = el("li");
+    item.append(button);
+    list.append(item);
+  }
+  return list;
+}
+
+function renderHeatTile(panel) {
+  const summary = panel.series[0].summary;
+  const z = summary?.zscore10y;
+  const tile = el("button", `heat-tile heat-${heatLevel(z)}`);
+  tile.type = "button";
+  tile.append(el("span", "heat-title", panelName(panel)));
+  if (summary) tile.append(el("span", "heat-value", formatNumber(summary.last, panel.decimals)));
+  const zText = typeof z === "number" ? `z ${formatSigned(z, 1)}` : "ingen 10-års historik";
+  tile.append(el("span", "heat-z", zText));
+  tile.title = typeof z === "number"
+    ? `${formatSigned(z, 1)} standardafvigelser fra gennemsnittet de seneste 10 år`
+    : "Serien er for ung eller for sjælden til at sammenligne med 10 år";
+  tile.addEventListener("click", () => goToPanel(panel));
+  return tile;
+}
+
+function renderHeatmap() {
+  const heatmap = el("div", "heatmap");
+  for (const section of DATA.sections) {
+    const block = el("section", "heat-section");
+    const grid = el("div", "heat-grid");
+    grid.append(...DATA.panels.filter(panel => panel.section === section.id).map(renderHeatTile));
+    block.append(el("h3", "heat-section-title", section.title), grid);
+    heatmap.append(block);
+  }
+  return heatmap;
+}
+
+function renderHeatLegend() {
+  const legend = el("div", "heat-legend");
+  for (const [level, label] of HEAT_LEGEND) {
+    const item = el("span", "heat-legend-item");
+    const swatch = el("span", `heat-swatch heat-${level}`);
+    swatch.setAttribute("aria-hidden", "true");
+    item.append(swatch, label);
+    legend.append(item);
+  }
+  return legend;
+}
+
+function renderSignals() {
+  destroyCharts();
+  document.getElementById("panels").replaceChildren(
+    el("h2", "group-heading", "Største bevægelser denne uge"),
+    el("p", "section-note",
+       "Ændringen over 7 dage målt mod en typisk uge de seneste 10 år. Kun serier med dags- eller ugedata."),
+    renderMovers(),
+    el("h2", "group-heading", "Niveau i forhold til de seneste 10 år"),
+    el("p", "section-note",
+       "Farven viser, hvor usædvanligt niveauet er (z-score), ikke om det er godt eller skidt. "
+       + "Normalt: inden for ±0,5 standardafvigelser. Meget: over 1,5. Klik for at se grafen."),
+    renderHeatLegend(),
+    renderHeatmap(),
+  );
+}
+
 // ---------------------------------------------------------------- sections + routing
 
 // The URL is the single source of truth for what is shown: "#europe?range=10" means the
@@ -583,12 +704,17 @@ function updateRangeButtons() {
 // restores exactly the same view. The default range is left out to keep links short.
 const VALID_RANGES = [1, 5, 10, 0];
 
+// The Signals overview is a tab of the page only; the data sections come from data.js.
+function allTabs() {
+  return [SIGNALS_TAB, ...DATA.sections];
+}
+
 function parseHash() {
   const [sectionPart, query = ""] = location.hash.slice(1).split("?");
   const params = new URLSearchParams(query);
   const range = Number(params.get("range"));
   return {
-    sectionId: DATA.sections.some(section => section.id === sectionPart) ? sectionPart : DATA.sections[0].id,
+    sectionId: allTabs().some(tab => tab.id === sectionPart) ? sectionPart : SIGNALS_TAB.id,
     rangeYears: params.has("range") && VALID_RANGES.includes(range) ? range : DEFAULT_RANGE_YEARS,
   };
 }
@@ -598,10 +724,10 @@ function hashFor(sectionId, years) {
 }
 
 function renderTabs(activeId) {
-  const links = DATA.sections.map(section => {
-    const link = el("a", "tab", section.title);
-    link.href = hashFor(section.id, rangeYears); // switching tab keeps the chosen period
-    if (section.id === activeId) link.setAttribute("aria-current", "page");
+  const links = allTabs().map(tab => {
+    const link = el("a", "tab", tab.title);
+    link.href = hashFor(tab.id, rangeYears); // switching tab keeps the chosen period
+    if (tab.id === activeId) link.setAttribute("aria-current", "page");
     return link;
   });
   document.getElementById("tabs").replaceChildren(...links);
@@ -643,7 +769,18 @@ function route() {
   rangeYears = years;
   updateRangeButtons();
   renderTabs(sectionId);
-  renderSection(sectionId);
+  if (sectionId === SIGNALS_TAB.id) {
+    renderSignals();
+  } else {
+    renderSection(sectionId);
+  }
+  if (scrollTargetPanelId) {
+    document.getElementById(`panel-${scrollTargetPanelId}`)?.scrollIntoView({ block: "start" });
+    scrollTargetPanelId = null;
+  } else if (sectionId !== shownSectionId) {
+    window.scrollTo(0, 0); // a new tab starts at the top; a new period keeps the position
+  }
+  shownSectionId = sectionId;
 }
 
 function init() {

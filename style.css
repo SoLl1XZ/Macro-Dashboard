@@ -20,6 +20,14 @@
   --series-6: #008300;
   --series-7: #4a3aa7;
   --series-8: #e34948;
+  /* Diverging heat scale for the Signals tab: blue = low, red = high versus the last
+     10 years, grey = normal. Red steps match the blue ones in OKLab lightness; both arms
+     pass the dataviz validator (ordinal) and every text colour clears 6:1. */
+  --heat-neg-strong: #1c5cab;  --heat-neg-strong-text: #ffffff;
+  --heat-neg-weak: #86b6ef;    --heat-neg-weak-text: #0b0b0b;
+  --heat-neutral: #f0efec;     --heat-neutral-text: #0b0b0b;
+  --heat-pos-weak: #ea9a93;    --heat-pos-weak-text: #0b0b0b;
+  --heat-pos-strong: #9e3432;  --heat-pos-strong-text: #ffffff;
   --radius: 12px;
   --content-width: 1400px;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -48,6 +56,12 @@
     --series-6: #008300;
     --series-7: #9085e9;
     --series-8: #e66767;
+    /* On the dark surface the stronger step is the brighter one. */
+    --heat-neg-strong: #5598e7;  --heat-neg-strong-text: #0b0b0b;
+    --heat-neg-weak: #184f95;    --heat-neg-weak-text: #ffffff;
+    --heat-neutral: #383835;     --heat-neutral-text: #ffffff;
+    --heat-pos-weak: #892b2a;    --heat-pos-weak-text: #ffffff;
+    --heat-pos-strong: #dd716a;  --heat-pos-strong-text: #0b0b0b;
   }
 }
 
@@ -375,6 +389,119 @@ main {
   border-radius: var(--radius);
 }
 
+/* ------------------------------------------------------------------ signals */
+
+.movers,
+.heat-legend,
+.heatmap { grid-column: 1 / -1; }
+
+.movers {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.movers li + li { border-top: 1px solid var(--gridline); }
+
+.mover {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: baseline;
+  gap: 4px 16px;
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mover:hover { background: var(--wash); }
+.mover-section { color: var(--text-muted); font-size: 12px; }
+.mover-change { font-variant-numeric: tabular-nums; text-align: right; }
+.mover-size { color: var(--text-secondary); font-size: 13px; text-align: right; }
+
+.heat-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.heat-legend-item { display: flex; align-items: center; gap: 6px; }
+
+.heat-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--heat-fill);
+}
+
+.heat-section + .heat-section { margin-top: 16px; }
+
+.heat-section-title {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.heat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 2px; /* the surface gap separates tiles; no borders */
+}
+
+.heat-tile {
+  min-height: 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--heat-fill);
+  color: var(--heat-text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.heat-tile:hover { filter: brightness(1.06); }
+
+.heat-tile:focus-visible,
+.mover:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+
+.heat-title { font-weight: 600; }
+.heat-value { font-size: 14px; }
+.heat-z { opacity: 0.85; }
+
+.heat-neg-strong { --heat-fill: var(--heat-neg-strong); --heat-text: var(--heat-neg-strong-text); }
+.heat-neg-weak { --heat-fill: var(--heat-neg-weak); --heat-text: var(--heat-neg-weak-text); }
+.heat-neutral { --heat-fill: var(--heat-neutral); --heat-text: var(--heat-neutral-text); }
+.heat-pos-weak { --heat-fill: var(--heat-pos-weak); --heat-text: var(--heat-pos-weak-text); }
+.heat-pos-strong { --heat-fill: var(--heat-pos-strong); --heat-text: var(--heat-pos-strong-text); }
+/* No 10-year history: an outlined tile, so it doesn't pass for "normal". */
+.heat-none {
+  --heat-fill: transparent;
+  --heat-text: var(--text-muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* Room for the sticky header when jumping to a card from the Signals tab. */
+.card { scroll-margin-top: 130px; }
+
 /* ------------------------------------------------------------------- phones */
 
 @media (max-width: 600px) {
@@ -389,6 +516,11 @@ main {
     color: var(--text-muted);
     font-size: 12px;
   }
+
+  .card { scroll-margin-top: 16px; } /* the header isn't sticky on phones */
+
+  /* Name and section on one line, change and size on the next. */
+  .mover { grid-template-columns: minmax(0, 1fr) auto; }
 }
 
 .visually-hidden {
