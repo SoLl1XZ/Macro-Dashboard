@@ -60,6 +60,18 @@ h1 {
   font-weight: 600;
 }
 
+.updated {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* The daily update has stopped: say so plainly (icon + text, not colour alone). */
+.updated.is-old {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
 .range-picker {
   display: flex;
   gap: 2px;
@@ -256,6 +268,23 @@ main {
   color: var(--text-secondary);
   font-size: 13px;
 }
+
+.notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.card-sources {
+  margin: auto 0 0; /* pushes the sources to the bottom of the card */
+  padding-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.card-sources a { color: var(--text-secondary); }
 
 .load-error {
   padding: 16px;

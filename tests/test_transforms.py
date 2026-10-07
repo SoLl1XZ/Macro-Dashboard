@@ -1,7 +1,7 @@
 import unittest
 
-from transforms import (change_since, difference, infer_frequency, shift_months, spread,
-                        summarize, thin_before, year_over_year)
+from transforms import (change_since, difference, infer_frequency, is_stale, shift_months,
+                        spread, summarize, thin_before, year_over_year)
 
 
 def monthly(start_year: int, values: list[float]) -> list[tuple[str, float]]:
@@ -97,6 +97,19 @@ class InferFrequencyTest(unittest.TestCase):
 
     def test_single_observation_is_unknown(self):
         self.assertIsNone(infer_frequency([("2026-01-01", 1.0)]))
+
+
+class IsStaleTest(unittest.TestCase):
+    def test_normal_publication_lag_is_not_stale(self):
+        self.assertFalse(is_stale("2026-08-01", "M", today="2026-10-07"))  # August CPI in October
+        self.assertFalse(is_stale("2026-10-05", "D", today="2026-10-07"))
+
+    def test_too_old_is_stale(self):
+        self.assertTrue(is_stale("2026-05-01", "M", today="2026-10-07"))
+        self.assertTrue(is_stale("2026-07-23", "D", today="2026-10-07"))
+
+    def test_unknown_frequency_is_never_stale(self):
+        self.assertFalse(is_stale("2000-01-01", None, today="2026-10-07"))
 
 
 class ThinBeforeTest(unittest.TestCase):

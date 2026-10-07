@@ -1,8 +1,12 @@
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import fetch_data
-from fetch_data import apply_transforms, build_payload, fetch_source, normalize_period, parse_number
+from fetch_data import (apply_transforms, build_payload, fetch_source, load_previous_payload,
+                        normalize_period, parse_number, reuse_previous_data, source_url,
+                        write_data_js)
 from indicators import Panel, Series
 
 
@@ -111,6 +115,71 @@ class BuildPayloadTest(unittest.TestCase):
         observations = {"x": [("1999-06-01", 1.0), ("2000-01-01", 2.0)]}
         payload = build_payload([panel], observations, {}, today="2026-10-07")
         self.assertEqual(payload["panels"][0]["series"][0]["data"], [["2000-01-01", 2.0]])
+
+
+class SourceUrlTest(unittest.TestCase):
+    def test_links_point_to_the_series_page(self):
+        self.assertEqual(source_url(Series("x", "X", "fred", "DGS10")),
+                         "https://fred.stlouisfed.org/series/DGS10")
+        self.assertEqual(source_url(Series("x", "X", "ecb", "EXR/D.USD.EUR.SP00.A")),
+                         "https://data.ecb.europa.eu/data/datasets/EXR/EXR.D.USD.EUR.SP00.A")
+        self.assertEqual(source_url(Series("x", "X", "statbank", "PRIS01?VAREGR=000000&ENHED=300")),
+                         "https://www.statistikbanken.dk/PRIS01")
+
+    def test_derived_series_have_no_link(self):
+        self.assertIsNone(source_url(Series("x", "X", "derived", ("a", "b"), "spread")))
+
+
+class ReusePreviousDataTest(unittest.TestCase):
+    TODAY = "2026-10-07"
+
+    def payload_for(self, observations: dict, errors: dict) -> dict:
+        panel = Panel("p", "us", "Test", "%", "Beskrivelse",
+                      (Series("ok", "OK", "fred", "A"), Series("flaky", "Flaky", "fred", "B")))
+        return build_payload([panel], observations, errors, today=self.TODAY)
+
+    def previous_run(self) -> dict:
+        previous = self.payload_for({"ok": [("2026-08-01", 1.0)], "flaky": [("2026-08-01", 2.0)]}, {})
+        previous["generatedAt"] = "2026-10-06T06:00:00+00:00"
+        return previous
+
+    def test_failed_series_gets_previous_data_with_its_fetch_time(self):
+        payload = self.payload_for({"ok": [("2026-09-01", 1.5)]}, {"flaky": "TimeoutError: x"})
+        reused = reuse_previous_data(payload, self.previous_run(), self.TODAY)
+        ok, flaky = payload["panels"][0]["series"]
+        self.assertEqual(reused, ["flaky"])
+        self.assertEqual(flaky["data"], [["2026-08-01", 2.0]])
+        self.assertEqual(flaky["error"], "TimeoutError: x")  # the failure stays visible
+        self.assertEqual(flaky["fallbackFrom"], "2026-10-06T06:00:00+00:00")
+        self.assertEqual(ok["data"], [["2026-09-01", 1.5]])  # fresh data is never overwritten
+        self.assertIsNone(ok["fallbackFrom"])
+
+    def test_fallback_keeps_the_original_fetch_time_across_runs(self):
+        previous = self.previous_run()
+        previous["panels"][0]["series"][1]["fallbackFrom"] = "2026-10-01T06:00:00+00:00"
+        payload = self.payload_for({"ok": [("2026-09-01", 1.5)]}, {"flaky": "TimeoutError: x"})
+        reuse_previous_data(payload, previous, self.TODAY)
+        self.assertEqual(payload["panels"][0]["series"][1]["fallbackFrom"], "2026-10-01T06:00:00+00:00")
+
+    def test_without_previous_data_the_series_stays_empty(self):
+        payload = self.payload_for({"ok": [("2026-09-01", 1.5)]}, {"flaky": "TimeoutError: x"})
+        self.assertEqual(reuse_previous_data(payload, None, self.TODAY), [])
+        self.assertEqual(payload["panels"][0]["series"][1]["data"], [])
+
+
+class DataFileTest(unittest.TestCase):
+    def test_written_file_can_be_read_back(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "data.js"
+            write_data_js({"generatedAt": "x", "panels": []}, path)
+            self.assertEqual(load_previous_payload(path), {"generatedAt": "x", "panels": []})
+
+    def test_missing_or_corrupt_file_gives_none(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "data.js"
+            self.assertIsNone(load_previous_payload(path))
+            path.write_text("window.MACRO_DATA = {broken", encoding="utf-8")
+            self.assertIsNone(load_previous_payload(path))
 
 
 if __name__ == "__main__":

@@ -138,10 +138,13 @@ function renderSeriesTable(panel) {
 
     if (series.summary) {
       const { last, change1y } = series.summary;
+      const note = freshnessNote(series);
+      const period = el("td", "num period", (note ? "⚠ " : "") + periodLabel(series));
+      if (note) period.title = note;
       row.append(
         el("td", "num", formatNumber(last, panel.decimals)),
         el("td", "num", change1y === null ? "–" : formatChange(change1y, panel)),
-        el("td", "num period", periodLabel(series)),
+        period,
       );
     } else {
       const error = el("td", "num error-text", "⚠ Data mangler");
@@ -155,6 +158,92 @@ function renderSeriesTable(panel) {
   return table;
 }
 
+// ------------------------------------------------------------ freshness + sources
+
+const FETCH_TIME_FORMAT = new Intl.DateTimeFormat("da-DK", {
+  day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
+});
+const FETCH_DATE_FORMAT = new Intl.DateTimeFormat("da-DK", { day: "numeric", month: "short", year: "numeric" });
+const FREQUENCY_ADJECTIVES = { D: "daglige", W: "ugentlige", M: "månedlige", Q: "kvartalsvise", A: "årlige" };
+const OLD_DATA_DAYS = 2; // the update job runs daily, so older data means it has stopped
+
+function renderUpdated() {
+  const fetchedAt = new Date(DATA.generatedAt);
+  const ageDays = Math.floor((Date.now() - fetchedAt.getTime()) / 86_400_000);
+  const node = document.getElementById("updated");
+  const text = `Data hentet ${FETCH_TIME_FORMAT.format(fetchedAt)}`;
+  if (ageDays >= OLD_DATA_DAYS) {
+    node.textContent = `⚠ ${text} (${ageDays} dage siden – den daglige opdatering kører måske ikke)`;
+    node.classList.add("is-old");
+  } else {
+    node.textContent = text;
+  }
+}
+
+// Why a series' latest value might not be current, or null if it is.
+function freshnessNote(series) {
+  if (series.fallbackFrom) {
+    return `Seneste hentning fejlede – viser data hentet ${FETCH_DATE_FORMAT.format(new Date(series.fallbackFrom))}`;
+  }
+  if (series.stale) {
+    return `Forældet: nyeste tal er ældre end normalt for ${FREQUENCY_ADJECTIVES[series.frequency]} data`;
+  }
+  return null;
+}
+
+function renderNotes(panel) {
+  const labelsByNote = new Map();
+  for (const series of panel.series) {
+    const note = freshnessNote(series);
+    if (note === null) continue;
+    if (!labelsByNote.has(note)) labelsByNote.set(note, []);
+    labelsByNote.get(note).push(series.label);
+  }
+  if (labelsByNote.size === 0) return null;
+
+  const list = el("ul", "notes");
+  for (const [note, labels] of labelsByNote) {
+    // A note that applies to every series in the card is said once, without naming them.
+    const prefix = labels.length === panel.series.length ? "" : `${labels.join(", ")}: `;
+    list.append(el("li", "", `⚠ ${prefix}${note}`));
+  }
+  return list;
+}
+
+function sourceLink(text, url) {
+  if (!url) return text; // derived series are computed here, so there is nothing to link to
+  const link = el("a", "", text);
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  return link;
+}
+
+// "Kilde: FRED · Danmarks Statistik: Huse, Lejligheder" – one link per distinct page.
+function renderSources(panel) {
+  const seriesBySource = new Map();
+  for (const series of panel.series) {
+    if (!seriesBySource.has(series.source)) seriesBySource.set(series.source, []);
+    seriesBySource.get(series.source).push(series);
+  }
+
+  const footer = el("p", "card-sources", "Kilde: ");
+  [...seriesBySource].forEach(([source, members], groupIndex) => {
+    if (groupIndex > 0) footer.append(" · ");
+    const distinctUrls = new Set(members.map(series => series.sourceUrl));
+    if (distinctUrls.size === 1) {
+      footer.append(sourceLink(source, members[0].sourceUrl));
+      return;
+    }
+    footer.append(`${source}: `);
+    members.forEach((series, index) => {
+      if (index > 0) footer.append(", ");
+      footer.append(sourceLink(series.label, series.sourceUrl));
+    });
+  });
+  return footer;
+}
+
 function renderCard(panel) {
   const card = el("article", "card");
   const head = el("header", "card-head");
@@ -162,6 +251,9 @@ function renderCard(panel) {
   card.append(head, el("p", "card-desc", panel.description), renderHeadline(panel));
   if (panel.series.some(series => series.data.length > 0)) card.append(renderChartSlot(panel));
   if (panel.series.length > 1) card.append(renderSeriesTable(panel));
+  const notes = renderNotes(panel);
+  if (notes) card.append(notes);
+  card.append(renderSources(panel));
   return card;
 }
 
@@ -419,6 +511,7 @@ function init() {
     button.addEventListener("click", () => setRange(Number(button.dataset.years)));
   }
   setRange(rangeYears);
+  renderUpdated();
   window.addEventListener("hashchange", route);
   route();
 }

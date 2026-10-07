@@ -16,8 +16,8 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from indicators import PANELS, SECTIONS, Panel, Series
-from transforms import (Observation, difference, infer_frequency, shift_months, spread,
-                        summarize, thin_before, year_over_year)
+from transforms import (Observation, difference, infer_frequency, is_stale, shift_months,
+                        spread, summarize, thin_before, year_over_year)
 
 Batch = dict[str, list[Observation]]  # query -> observations
 
@@ -26,6 +26,7 @@ FETCH_START = "1999-01-01"
 DISPLAY_START = "2000-01-01"
 DAILY_HISTORY_YEARS = 2  # older daily data is thinned to one point per week
 OUTPUT_PATH = Path(__file__).parent / "data" / "data.js"
+DATA_JS_PREFIX = "window.MACRO_DATA = "
 SOURCE_NAMES = {
     "fred": "FRED", "ecb": "ECB", "eurostat": "Eurostat", "bis": "BIS",
     "imf_weo": "IMF World Economic Outlook", "imf_cpi": "IMF", "oecd_lt": "OECD",
@@ -311,19 +312,48 @@ def rounded_summary(summary: dict | None) -> dict | None:
     return {**summary, **{field: rounded(summary[field]) for field in ("last", "change1m", "change1y")}}
 
 
+def source_url(s: Series) -> str | None:
+    """A human-readable page for the series, linked from the dashboard."""
+    match s.source:
+        case "fred":
+            return f"https://fred.stlouisfed.org/series/{s.query}"
+        case "ecb":
+            flow, key = s.query.split("/", 1)
+            return f"https://data.ecb.europa.eu/data/datasets/{flow}/{flow}.{key}"
+        case "eurostat":
+            return f"https://ec.europa.eu/eurostat/databrowser/view/{s.query.split('?')[0]}/default/table"
+        case "bis":
+            return "https://data.bis.org/topics/CBPOL"
+        case "imf_weo":
+            return f"https://www.imf.org/external/datamapper/{s.query.split('/')[0]}@WEO"
+        case "imf_cpi":
+            return "https://data.imf.org/en/datasets/IMF.STA:CPI"
+        case "oecd_lt":
+            return ("https://data-explorer.oecd.org/vis?df[ds]=dsDisseminateFinalDMZ"
+                    "&df[id]=DSD_STES%40DF_FINMARK&df[ag]=OECD.SDD.STES")
+        case "statbank":
+            return f"https://www.statistikbanken.dk/{s.query.split('?')[0]}"
+        case _:
+            return None  # derived series are computed here, not published anywhere
+
+
 def series_payload(s: Series, panel: Panel, processed: dict[str, list[Observation]],
                    errors: dict[str, str], today: str) -> dict:
     obs = [o for o in processed.get(s.key, []) if o[0] >= DISPLAY_START]
     summary = summarize(obs, panel.change, today)  # before thinning: needs every daily point
+    frequency = infer_frequency(obs)  # also before thinning, which would make daily data look weekly
     thinning_cutoff = shift_months(today, -12 * DAILY_HISTORY_YEARS)
     return {
         "key": s.key,
         "label": s.label,
         "source": SOURCE_NAMES[s.source],
-        "frequency": infer_frequency(obs),  # before thinning, which would make daily data look weekly
+        "sourceUrl": source_url(s),
+        "frequency": frequency,
         # In IMF's World Economic Outlook the current year is already a projection.
         "forecastFrom": f"{today[:4]}-01-01" if s.source == "imf_weo" else None,
         "error": errors.get(s.key),
+        "stale": summary is not None and is_stale(summary["lastDate"], frequency, today),
+        "fallbackFrom": None,  # set by reuse_previous_data when this run's fetch failed
         "summary": rounded_summary(summary),
         "data": [[d, rounded(v)] for d, v in thin_before(obs, thinning_cutoff)],
     }
@@ -350,9 +380,46 @@ def build_payload(panels: list[Panel], processed: dict[str, list[Observation]],
     }
 
 
+def load_previous_payload(path: Path) -> dict | None:
+    """The data from the last run, or None if the file is missing or unreadable."""
+    try:
+        text = path.read_text(encoding="utf-8")
+        return json.loads(text.removeprefix(DATA_JS_PREFIX).rstrip().removesuffix(";"))
+    except (OSError, ValueError):
+        return None
+
+
+def reuse_previous_data(payload: dict, previous: dict | None, today: str) -> list[str]:
+    """Fill series that failed in this run with their data from the previous run.
+
+    A temporary API outage then shows slightly older data with a warning instead of an
+    empty chart. Returns the keys of the series that were filled in.
+    """
+    if previous is None:
+        return []
+    previous_by_key = {s["key"]: s for panel in previous["panels"] for s in panel["series"]}
+    reused = []
+    for panel in payload["panels"]:
+        for index, series in enumerate(panel["series"]):
+            old = previous_by_key.get(series["key"])
+            if series["data"] or not old or not old["data"]:
+                continue
+            panel["series"][index] = {
+                **series,  # labels and links from the current catalog, data from the old run
+                "data": old["data"],
+                "summary": old["summary"],
+                "frequency": old["frequency"],
+                "stale": is_stale(old["summary"]["lastDate"], old["frequency"], today),
+                # If the previous run was itself a fallback, keep the original fetch time.
+                "fallbackFrom": old.get("fallbackFrom") or previous["generatedAt"],
+            }
+            reused.append(series["key"])
+    return reused
+
+
 def write_data_js(payload: dict, path: Path) -> None:
     # A .js file, not .json: a page opened via file:// may load scripts but not fetch() files.
-    text = "window.MACRO_DATA = " + json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + ";\n"
+    text = DATA_JS_PREFIX + json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + ";\n"
     path.parent.mkdir(exist_ok=True)
     temporary = path.with_suffix(".tmp")
     temporary.write_text(text, encoding="utf-8")
@@ -371,9 +438,13 @@ def main() -> int:
         return 1
 
     processed, errors = apply_transforms(all_series, observations, failures)
-    write_data_js(build_payload(PANELS, processed, errors, today), OUTPUT_PATH)
+    payload = build_payload(PANELS, processed, errors, today)
+    reused = reuse_previous_data(payload, load_previous_payload(OUTPUT_PATH), today)
+    write_data_js(payload, OUTPUT_PATH)
     for key, message in errors.items():
         print(f"  FAIL {key}: {message}")
+    if reused:
+        print(f"  Kept previous data for {len(reused)} failed series: {', '.join(reused)}")
     size_kb = OUTPUT_PATH.stat().st_size / 1024
     print(f"Wrote {OUTPUT_PATH.name}: {len(processed)} series ok, {len(errors)} failed, {size_kb:.0f} KB")
     return 0

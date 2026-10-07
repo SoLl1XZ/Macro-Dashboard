@@ -95,6 +95,19 @@ def infer_frequency(obs: list[Observation]) -> str | None:
     return "A"
 
 
+# How many days after the start of its period the latest observation may be before the
+# series counts as stale. Generous because data is published with a lag: monthly CPI
+# arrives weeks after month-end, quarterly GDP one to two months after quarter-end.
+MAX_AGE_DAYS = {"D": 10, "W": 21, "M": 120, "Q": 220, "A": 550}
+
+
+def is_stale(last_date: str, frequency: str | None, today: str) -> bool:
+    if frequency is None:
+        return False
+    age_days = (date.fromisoformat(today) - date.fromisoformat(last_date)).days
+    return age_days > MAX_AGE_DAYS[frequency]
+
+
 def iso_week(iso_date: str) -> tuple[int, int]:
     year, week, _ = date.fromisoformat(iso_date).isocalendar()
     return year, week
