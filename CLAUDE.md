@@ -1,6 +1,7 @@
 # Makro-dashboard
 
-Statisk HTML-dashboard med makroøkonomiske nøgletal i seks sektioner: Global, USA, Europa, Danmark, Asien og Kina.
+Statisk HTML-dashboard med makroøkonomiske nøgletal i seks sektioner: Global, USA, Europa, Danmark, Asien og Kina,
+plus fanerne **Signaler** (kalender, ugens største bevægelser, z-score-heatmap) og **Sammenlign** (to vilkårlige serier).
 Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, som siden læser.
 
 ## Kør
@@ -22,11 +23,12 @@ python3 -m unittest discover tests
 
 | Fil | Ansvar |
 |-----|--------|
-| `indicators.py` | Katalog over alle serier: kilde, id, sektion, enhed, beregning |
-| `fetch_data.py` | Henter serier fra hver kilde og skriver `data/data.js` |
-| `transforms.py` | Beregninger: år-over-år, spreads, ændringer |
-| `index.html`, `style.css`, `app.js` | Selve dashboardet (Chart.js fra CDN) |
-| `data/data.js` | Genereret data: `window.MACRO_DATA = {...}` |
+| `indicators.py` | Katalog over alle serier: kilde, id, sektion, gruppe, enhed, beregning, referencelinjer; CEPR-recessioner |
+| `events.py` | ECB- og Fed-mødedatoer (manuel liste med kilder) og kalenderlogik |
+| `fetch_data.py` | Henter serier fra hver kilde, recessioner (USREC) og Eurostats udgivelseskalender; skriver `data/data.js` |
+| `transforms.py` | Beregninger: år-over-år, spreads, ændringer, percentil, z-score, ugebevægelse, recessionsperioder |
+| `index.html`, `style.css`, `app.js` | Selve dashboardet (Chart.js fra CDN). URL'en (`#europe?range=10`) er eneste kilde til tilstand |
+| `data/data.js` | Genereret data: `window.MACRO_DATA = {...}`. Committes kun af GitHub Actions-botten |
 | `tests/` | Unit tests (unittest) |
 
 ## Datakilder
@@ -51,9 +53,13 @@ python3 -m unittest discover tests
   tests → `fetch_data.py` → commit af `data/data.js` → publicering af `index.html`, `app.js`, `style.css`, `data/` til Pages.
 - Commits bruger noreply-adressen `222303744+SoLl1XZ@users.noreply.github.com` (sat i repoets lokale git-config), aldrig gmail.
 - Spørg altid før `git push`. Hent bot-commits med `git pull` før lokale ændringer.
+- Commit aldrig en lokalt genereret `data/data.js` (konflikt med botten). Kassér den før pull: `git restore data/data.js`.
 
 ## Kendte faldgruber
 
 - **User-Agent:** FRED og IMF blokerer ukendte User-Agents, OECD blokerer Pythons standard. `curl/8.7.1` virker hos alle (se `USER_AGENT` i `fetch_data.py`).
 - **SSL-fejl (`CERTIFICATE_VERIFY_FAILED`) lokalt:** python.org-Python bruger sin egen certifikatliste. Ret med `python3 -m pip install --upgrade certifi`.
 - **Statistikbankens BULK-svar er ikke sorteret efter dato** – `to_observations` sorterer.
+- **Eurostat:** eurozonen hedder `EA21` fra 2026 (`EA20` stopper i 2025; nogle datasæt bruger `EA`). År-over-år-vækst (`PCH_SM`) findes kun for kalenderkorrigerede data (`s_adj=CA`).
+- **Manuelle lister:** CEPR-recessioner (`indicators.py`) og ECB/Fed-møder (`events.py`) har intet API. Siden advarer, når mødelisterne løber tør.
+- **Ingen to y-akser** (heller ikke i Sammenlign): forskellige enheder vises som to grafer, eller begge omregnes til indeks 100.
