@@ -5,20 +5,32 @@ import io
 import json
 import math
 import re
+import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
 from collections.abc import Callable, Iterable
+from datetime import date, datetime, timezone
+from pathlib import Path
 
-from indicators import PANELS, Series
+from indicators import PANELS, SECTIONS, Panel, Series
+from transforms import (Observation, difference, shift_months, spread, summarize,
+                        thin_before, year_over_year)
 
-Observation = tuple[str, float]  # (ISO date "YYYY-MM-DD", value)
 Batch = dict[str, list[Observation]]  # query -> observations
 
 # One year before the dashboard's first date, so year-over-year changes exist from the start.
 FETCH_START = "1999-01-01"
+DISPLAY_START = "2000-01-01"
+DAILY_HISTORY_YEARS = 2  # older daily data is thinned to one point per week
+OUTPUT_PATH = Path(__file__).parent / "data" / "data.js"
+SOURCE_NAMES = {
+    "fred": "FRED", "ecb": "ECB", "eurostat": "Eurostat", "bis": "BIS",
+    "imf_weo": "IMF World Economic Outlook", "imf_cpi": "IMF", "oecd_lt": "OECD",
+    "statbank": "Danmarks Statistik", "derived": "Beregnet",
+}
 SDMX_CSV = "application/vnd.sdmx.data+csv;version=1.0.0"
 # The APIs' bot filters disagree: FRED and the IMF block custom agents, the OECD blocks
 # Python's default one. A curl-style agent is accepted by all of them (tested 2026-10-07).
@@ -260,13 +272,110 @@ def print_status(series: list[Series], observations: dict[str, list[Observation]
                   f"{obs[0][0]} .. {obs[-1][0]}  last={obs[-1][1]:g}")
 
 
-def main() -> None:
+# ------------------------------------------------------------------- transform + output
+
+def apply_transforms(all_series: list[Series], observations: dict[str, list[Observation]],
+                     failures: dict[str, str]) -> tuple[dict[str, list[Observation]], dict[str, str]]:
+    """Apply each series' transform. Returns (processed observations, errors) keyed by series key."""
+    processed: dict[str, list[Observation]] = {}
+    errors = dict(failures)
+    # Own transforms first: derived series are computed from these results.
+    for s in all_series:
+        if s.source == "derived" or s.key not in observations:
+            continue
+        obs = observations[s.key]
+        if s.transform == "yoy":
+            obs = year_over_year(obs)
+        elif s.transform == "diff":
+            obs = difference(obs)
+        processed[s.key] = obs
+
+    for s in all_series:
+        if s.source != "derived":
+            continue
+        missing = [key for key in s.query if key not in processed]
+        if missing:
+            errors[s.key] = f"Missing input: {', '.join(missing)}"
+        else:
+            processed[s.key] = spread(processed[s.query[0]], processed[s.query[1]])
+    return processed, errors
+
+
+def rounded(value: float | None) -> float | None:
+    return None if value is None else round(value, 4)
+
+
+def rounded_summary(summary: dict | None) -> dict | None:
+    if summary is None:
+        return None
+    return {**summary, **{field: rounded(summary[field]) for field in ("last", "change1m", "change1y")}}
+
+
+def series_payload(s: Series, panel: Panel, processed: dict[str, list[Observation]],
+                   errors: dict[str, str], today: str) -> dict:
+    obs = [o for o in processed.get(s.key, []) if o[0] >= DISPLAY_START]
+    summary = summarize(obs, panel.change, today)  # before thinning: needs every daily point
+    thinning_cutoff = shift_months(today, -12 * DAILY_HISTORY_YEARS)
+    return {
+        "key": s.key,
+        "label": s.label,
+        "source": SOURCE_NAMES[s.source],
+        # In IMF's World Economic Outlook the current year is already a projection.
+        "forecastFrom": f"{today[:4]}-01-01" if s.source == "imf_weo" else None,
+        "error": errors.get(s.key),
+        "summary": rounded_summary(summary),
+        "data": [[d, rounded(v)] for d, v in thin_before(obs, thinning_cutoff)],
+    }
+
+
+def build_payload(panels: list[Panel], processed: dict[str, list[Observation]],
+                  errors: dict[str, str], today: str) -> dict:
+    return {
+        "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "sections": [{"id": section_id, "title": title} for section_id, title in SECTIONS],
+        "panels": [
+            {
+                "id": panel.id,
+                "section": panel.section,
+                "title": panel.title,
+                "unit": panel.unit,
+                "description": panel.description,
+                "change": panel.change,
+                "series": [series_payload(s, panel, processed, errors, today) for s in panel.series],
+            }
+            for panel in panels
+        ],
+    }
+
+
+def write_data_js(payload: dict, path: Path) -> None:
+    # A .js file, not .json: a page opened via file:// may load scripts but not fetch() files.
+    text = "window.MACRO_DATA = " + json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + ";\n"
+    path.parent.mkdir(exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(text, encoding="utf-8")
+    temporary.replace(path)  # atomic swap: the page never sees a half-written file
+
+
+def main() -> int:
+    today = date.today().isoformat()
     all_series = [s for panel in PANELS for s in panel.series]
     print("Fetching...")
     observations, failures = fetch_all(all_series)
-    print_status(all_series, observations, failures)
-    print(f"\n{len(observations)} series fetched, {len(failures)} failed.")
+    if "--verbose" in sys.argv:
+        print_status(all_series, observations, failures)
+    if not observations:
+        print("Nothing could be fetched; keeping the existing data file.", file=sys.stderr)
+        return 1
+
+    processed, errors = apply_transforms(all_series, observations, failures)
+    write_data_js(build_payload(PANELS, processed, errors, today), OUTPUT_PATH)
+    for key, message in errors.items():
+        print(f"  FAIL {key}: {message}")
+    size_kb = OUTPUT_PATH.stat().st_size / 1024
+    print(f"Wrote {OUTPUT_PATH.name}: {len(processed)} series ok, {len(errors)} failed, {size_kb:.0f} KB")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

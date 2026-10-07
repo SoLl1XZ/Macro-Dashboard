@@ -43,3 +43,9 @@ python3 -m unittest discover tests
 - Data gemmes som `.js` (ikke `.json`), fordi en side åbnet via `file://` ikke må `fetch()` lokale filer.
 - FRED tillader ikke browser-kald (ingen CORS), derfor hentes alt i Python frem for i browseren.
 - Automatisk opdatering sker via GitHub Actions; siden publiceres med GitHub Pages.
+
+## Kendte faldgruber
+
+- **User-Agent:** FRED og IMF blokerer ukendte User-Agents, OECD blokerer Pythons standard. `curl/8.7.1` virker hos alle (se `USER_AGENT` i `fetch_data.py`).
+- **SSL-fejl (`CERTIFICATE_VERIFY_FAILED`) lokalt:** python.org-Python bruger sin egen certifikatliste. Ret med `python3 -m pip install --upgrade certifi`.
+- **Statistikbankens BULK-svar er ikke sorteret efter dato** – `to_observations` sorterer.
