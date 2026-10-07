@@ -5,7 +5,9 @@ An observation list is a list of (ISO date, value) tuples sorted by date.
 
 import bisect
 import calendar
-from datetime import date
+import math
+import statistics
+from datetime import date, timedelta
 
 Observation = tuple[str, float]
 
@@ -72,24 +74,76 @@ PERCENTILE_YEARS = 10
 MIN_PERCENTILE_OBSERVATIONS = 24
 
 
+def history_window(obs: list[Observation], years: int) -> list[Observation] | None:
+    """The observations of the last `years` years, or None if they can't describe 'normal'.
+
+    None if the series is younger than the window, or has too few points to compare with.
+    """
+    if not obs:
+        return None
+    window_start = shift_months(obs[-1][0], -12 * years)
+    if obs[0][0] > shift_months(window_start, 1):
+        return None
+    window = [o for o in obs if o[0] >= window_start]
+    return window if len(window) >= MIN_PERCENTILE_OBSERVATIONS else None
+
+
 def percentile_rank(obs: list[Observation], years: int = PERCENTILE_YEARS) -> float | None:
     """Where the last value ranks (0–100) among the observations of the last `years` years.
 
     Equal values count half, so a rate that hasn't moved for years lands mid-range, not at 100.
-    None if the series is younger than the window or has too few points to rank against.
     """
-    if not obs:
+    window = history_window(obs, years)
+    if window is None:
         return None
-    last_date, last_value = obs[-1]
-    window_start = shift_months(last_date, -12 * years)
-    if obs[0][0] > shift_months(window_start, 1):
-        return None
-    window = [value for d, value in obs if d >= window_start]
-    if len(window) < MIN_PERCENTILE_OBSERVATIONS:
-        return None
-    below = sum(1 for value in window if value < last_value)
-    equal = sum(1 for value in window if value == last_value)
+    last_value = obs[-1][1]
+    below = sum(1 for _, value in window if value < last_value)
+    equal = sum(1 for _, value in window if value == last_value)
     return (below + 0.5 * equal) / len(window) * 100
+
+
+def z_score(obs: list[Observation], years: int = PERCENTILE_YEARS) -> float | None:
+    """How many standard deviations the last value is from the mean of the last `years` years."""
+    window = history_window(obs, years)
+    if window is None:
+        return None
+    values = [value for _, value in window]
+    deviation = statistics.pstdev(values)
+    return (obs[-1][1] - statistics.fmean(values)) / deviation if deviation > 0 else None
+
+
+def relative_change(earlier: float, later: float, kind: str) -> float | None:
+    if kind == "pct":
+        return (later / earlier - 1) * 100 if earlier != 0 else None
+    return later - earlier
+
+
+def weekly_move(obs: list[Observation], kind: str,
+                years: int = PERCENTILE_YEARS) -> tuple[float, float] | None:
+    """The change over the last 7 days, and that change measured in typical weekly changes.
+
+    "Typical" is the root mean square of every 7-day change in the window, not the standard
+    deviation: a series with a steady trend (a stock index) would otherwise look calm even
+    when it moves a lot. Returns None for series without at least weekly data.
+    """
+    window = history_window(obs, years)
+    if window is None or infer_frequency(obs) not in ("D", "W"):
+        return None
+    dates = [d for d, _ in obs]
+    changes = []
+    for d, value in window:
+        week_before = (date.fromisoformat(d) - timedelta(days=7)).isoformat()
+        index = bisect.bisect_right(dates, week_before) - 1
+        if index >= 0:
+            change = relative_change(obs[index][1], value, kind)
+            if change is not None:
+                changes.append(change)
+    if len(changes) < MIN_PERCENTILE_OBSERVATIONS:
+        return None
+    typical = math.sqrt(statistics.fmean(change * change for change in changes))
+    if typical == 0:
+        return None
+    return changes[-1], changes[-1] / typical
 
 
 def summarize(obs: list[Observation], kind: str, today: str) -> dict | None:
@@ -98,12 +152,16 @@ def summarize(obs: list[Observation], kind: str, today: str) -> dict | None:
     if not known:
         return None
     last_date, last_value = known[-1]
+    move = weekly_move(known, kind)
     return {
         "lastDate": last_date,
         "last": last_value,
         "change1m": change_since(known, 1, kind),
         "change1y": change_since(known, 12, kind),
         "percentile10y": percentile_rank(known),
+        "zscore10y": z_score(known),
+        "weekChange": move[0] if move else None,
+        "weekMoveZ": move[1] if move else None,  # the week's change in typical weekly changes
     }
 
 

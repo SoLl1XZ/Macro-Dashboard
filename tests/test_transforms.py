@@ -1,8 +1,10 @@
+import math
 import unittest
+from datetime import date, timedelta
 
 from transforms import (change_since, difference, infer_frequency, is_stale, peak_trough_periods,
                         percentile_rank, recession_periods, shift_months, spread, summarize,
-                        thin_before, year_over_year)
+                        thin_before, weekly_move, year_over_year, z_score)
 
 
 def monthly(start_year: int, values: list[float]) -> list[tuple[str, float]]:
@@ -96,6 +98,44 @@ class PercentileRankTest(unittest.TestCase):
     def test_too_few_observations_has_no_percentile(self):
         yearly = [(f"{year}-01-01", float(year)) for year in range(2015, 2027)]
         self.assertIsNone(percentile_rank(yearly))
+
+
+def daily(start: str, values: list[float]) -> list[tuple[str, float]]:
+    """One observation per calendar day from `start`."""
+    first = date.fromisoformat(start)
+    return [((first + timedelta(days=i)).isoformat(), value) for i, value in enumerate(values)]
+
+
+class ZScoreTest(unittest.TestCase):
+    def test_new_high_is_well_above_the_mean(self):
+        # Evenly spread 1..121: the top value is (121 - 61) / 34.9 ≈ 1.7 standard deviations up.
+        self.assertAlmostEqual(z_score(monthly(2016, [float(i) for i in range(1, 122)])), 1.72, places=2)
+
+    def test_flat_series_has_no_z_score(self):
+        self.assertIsNone(z_score(monthly(2016, [2.0] * 121)))
+
+
+class WeeklyMoveTest(unittest.TestCase):
+    DAYS = 11 * 365
+
+    # Values i + i % 2: a steady trend with wiggles, so every 7-day change is 6 (even i) or
+    # 8 (odd i). The last day, i = 4014, is even. The typical change is the root mean square
+    # of equally many 6s and 8s: sqrt((36 + 64) / 2) = sqrt(50) ≈ 7.07.
+
+    def test_unusual_week_stands_out(self):
+        values = [float(i + i % 2) for i in range(self.DAYS)]
+        values[-1] += 20  # the last 7-day change becomes 6 + 20 = 26
+        change, move = weekly_move(daily("2015-01-01", values), "diff")
+        self.assertAlmostEqual(change, 26.0)
+        self.assertGreater(move, 3)  # ≈ 26 / 7.07
+
+    def test_ordinary_week_is_measured_against_the_typical_week(self):
+        values = [float(i + i % 2) for i in range(self.DAYS)]
+        _, move = weekly_move(daily("2015-01-01", values), "diff")
+        self.assertAlmostEqual(move, 6 / math.sqrt(50), places=2)  # ≈ 0.85
+
+    def test_monthly_series_has_no_weekly_move(self):
+        self.assertIsNone(weekly_move(monthly(2015, [float(i) for i in range(140)]), "diff"))
 
 
 class InferFrequencyTest(unittest.TestCase):
