@@ -259,6 +259,42 @@ function renderSources(panel) {
   return footer;
 }
 
+// ------------------------------------------------------------------------- CSV export
+
+function csvField(text) {
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+// Long format (one row per observation), because the series of a panel can have
+// different dates, e.g. daily and monthly gas prices.
+function panelCsv(panel) {
+  const rows = ["dato,serie,værdi"];
+  for (const series of panel.series) {
+    for (const [date, value] of series.data) rows.push(`${date},${csvField(series.label)},${value}`);
+  }
+  return rows.join("\n") + "\n";
+}
+
+function downloadCsv(panel) {
+  // The BOM tells Excel the file is UTF-8, so æ, ø and å display correctly.
+  const blob = new Blob(["﻿" + panelCsv(panel)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = el("a");
+  link.href = url;
+  link.download = `${panel.id}.csv`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000); // give the browser time to start the download
+}
+
+function renderCsvButton(panel) {
+  const button = el("button", "csv-button", "CSV");
+  button.type = "button";
+  button.title = "Download data som CSV. Dagsdata ældre end 2 år er tyndet ud til ét punkt pr. uge.";
+  button.setAttribute("aria-label", `Download ${panel.title} som CSV`);
+  button.addEventListener("click", () => downloadCsv(panel));
+  return button;
+}
+
 function renderCard(panel) {
   const card = el("article", "card");
   const head = el("header", "card-head");
@@ -268,7 +304,10 @@ function renderCard(panel) {
   if (panel.series.length > 1) card.append(renderSeriesTable(panel));
   const notes = renderNotes(panel);
   if (notes) card.append(notes);
-  card.append(renderSources(panel));
+  const footer = el("div", "card-footer");
+  footer.append(renderSources(panel));
+  if (panel.series.some(series => series.data.length > 0)) footer.append(renderCsvButton(panel));
+  card.append(footer);
   return card;
 }
 
@@ -501,29 +540,37 @@ function destroyCharts() {
   activeCharts = [];
 }
 
-function setRange(years) {
-  rangeYears = years;
+function updateRangeButtons() {
   for (const button of document.querySelectorAll("#range-picker button")) {
-    button.setAttribute("aria-pressed", String(Number(button.dataset.years) === years));
-  }
-  for (const chart of activeCharts) {
-    chart.options.scales.x.min = rangeStart(years);
-    chart.options.scales.x.time.unit = timeUnit(years);
-    chart.update();
+    button.setAttribute("aria-pressed", String(Number(button.dataset.years) === rangeYears));
   }
 }
 
 // ---------------------------------------------------------------- sections + routing
 
-function currentSectionId() {
-  const requested = location.hash.slice(1);
-  return DATA.sections.some(section => section.id === requested) ? requested : DATA.sections[0].id;
+// The URL is the single source of truth for what is shown: "#europe?range=10" means the
+// Europe tab with 10 years of history. So a copied link, a reload or the back button
+// restores exactly the same view. The default range is left out to keep links short.
+const VALID_RANGES = [1, 5, 10, 0];
+
+function parseHash() {
+  const [sectionPart, query = ""] = location.hash.slice(1).split("?");
+  const params = new URLSearchParams(query);
+  const range = Number(params.get("range"));
+  return {
+    sectionId: DATA.sections.some(section => section.id === sectionPart) ? sectionPart : DATA.sections[0].id,
+    rangeYears: params.has("range") && VALID_RANGES.includes(range) ? range : DEFAULT_RANGE_YEARS,
+  };
+}
+
+function hashFor(sectionId, years) {
+  return years === DEFAULT_RANGE_YEARS ? `#${sectionId}` : `#${sectionId}?range=${years}`;
 }
 
 function renderTabs(activeId) {
   const links = DATA.sections.map(section => {
     const link = el("a", "tab", section.title);
-    link.href = `#${section.id}`;
+    link.href = hashFor(section.id, rangeYears); // switching tab keeps the chosen period
     if (section.id === activeId) link.setAttribute("aria-current", "page");
     return link;
   });
@@ -558,7 +605,9 @@ function renderSection(sectionId) {
 }
 
 function route() {
-  const sectionId = currentSectionId();
+  const { sectionId, rangeYears: years } = parseHash();
+  rangeYears = years;
+  updateRangeButtons();
   renderTabs(sectionId);
   renderSection(sectionId);
 }
@@ -573,9 +622,11 @@ function init() {
     Chart.register(crosshairPlugin, referenceLinesPlugin);
   }
   for (const button of document.querySelectorAll("#range-picker button")) {
-    button.addEventListener("click", () => setRange(Number(button.dataset.years)));
+    // Only changes the URL; the hashchange event then redraws the page from it.
+    button.addEventListener("click", () => {
+      location.hash = hashFor(parseHash().sectionId, Number(button.dataset.years));
+    });
   }
-  setRange(rangeYears);
   renderUpdated();
   window.addEventListener("hashchange", route);
   // Chart colours are read from CSS when a chart is created, so redraw if the theme flips.
