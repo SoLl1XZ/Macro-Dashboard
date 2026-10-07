@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import tempfile
 import unittest
@@ -151,6 +153,19 @@ class FetchEurostatTest(unittest.TestCase):
         with mock.patch.object(fetch_data, "http_get", return_value=text):
             with self.assertRaisesRegex(ValueError, "Ambiguous"):
                 fetch_data.fetch_eurostat("ds?geo=DE")
+
+
+class FetchRecessionsTest(unittest.TestCase):
+    def test_us_dates_fall_back_to_previous_run_when_fred_fails(self):
+        def fred_down(series_id):
+            raise TimeoutError("down")
+
+        previous = {"recessions": {"us": [["2020-03-01", "2020-05-01"]]}}
+        with mock.patch.object(fetch_data, "fetch_fred", fred_down), \
+                contextlib.redirect_stdout(io.StringIO()):  # silence the expected FAIL line
+            recessions = fetch_data.fetch_recessions(previous)
+        self.assertEqual(recessions["us"], [["2020-03-01", "2020-05-01"]])
+        self.assertIn(["2020-01-01", "2020-07-01"], recessions["euro_area"])
 
 
 class SourceUrlTest(unittest.TestCase):

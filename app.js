@@ -395,6 +395,35 @@ const crosshairPlugin = {
   },
 };
 
+// Grey bands behind the lines for recessions, so turning points read in context.
+const recessionPlugin = {
+  id: "recessions",
+  beforeDatasetsDraw(chart, args, options) {
+    const periods = options.periods ?? [];
+    if (periods.length === 0) return;
+    const { ctx, chartArea, scales } = chart;
+    ctx.save();
+    ctx.fillStyle = cssVar("--recession");
+    for (const [start, end] of periods) {
+      const left = Math.max(scales.x.getPixelForValue(start), chartArea.left);
+      const right = Math.min(scales.x.getPixelForValue(end), chartArea.right);
+      if (right > left) ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+    }
+    ctx.restore();
+  },
+};
+
+const RECESSION_NOTES = {
+  us: "Grå felter: recessioner i USA (NBER).",
+  euro_area: "Grå felter: recessioner i eurozonen (CEPR).",
+};
+
+function recessionPeriods(sectionId) {
+  const source = DATA.sections.find(section => section.id === sectionId)?.recessions;
+  const periods = (source && DATA.recessions?.[source]) ?? [];
+  return periods.map(([start, end]) => [Date.parse(start), Date.parse(end)]);
+}
+
 // Dashed horizontal lines for targets and thresholds (e.g. a 2 % inflation target).
 // Dashed on purpose, so they read as a threshold and not as one more gridline.
 const referenceLinesPlugin = {
@@ -496,6 +525,7 @@ function chartOptions(panel) {
       legend: { display: false },
       tooltip: tooltipOptions(panel),
       referenceLines: { lines: referenceLines },
+      recessions: { periods: recessionPeriods(panel.section) },
     },
     scales: {
       x: {
@@ -584,6 +614,10 @@ function renderSection(sectionId) {
 
   // A sub-heading goes in front of the first card of each group.
   const children = [];
+  const recessionSource = DATA.sections.find(section => section.id === sectionId)?.recessions;
+  if (recessionSource && RECESSION_NOTES[recessionSource]) {
+    children.push(el("p", "section-note", RECESSION_NOTES[recessionSource]));
+  }
   panels.forEach((panel, index) => {
     if (panel.group && panel.group !== panels[index - 1]?.group) {
       children.push(el("h2", "group-heading", panel.group));
@@ -619,7 +653,8 @@ function init() {
   }
   if (typeof Chart !== "undefined") {
     Chart.Interaction.modes.nearestPerSeries = nearestPerSeries;
-    Chart.register(crosshairPlugin, referenceLinesPlugin);
+    // Registration order is drawing order: recession bands go behind the reference lines.
+    Chart.register(recessionPlugin, referenceLinesPlugin, crosshairPlugin);
   }
   for (const button of document.querySelectorAll("#range-picker button")) {
     // Only changes the URL; the hashchange event then redraws the page from it.

@@ -15,9 +15,11 @@ from collections.abc import Callable, Iterable
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from indicators import PANELS, SECTIONS, Panel, Series
-from transforms import (Observation, difference, infer_frequency, is_stale, shift_months,
-                        spread, summarize, thin_before, year_over_year)
+from indicators import (EURO_AREA_PEAKS_AND_TROUGHS, PANELS, RECESSIONS_BY_SECTION, SECTIONS,
+                        Panel, Series)
+from transforms import (Observation, difference, infer_frequency, is_stale, peak_trough_periods,
+                        recession_periods, shift_months, spread, summarize, thin_before,
+                        year_over_year)
 
 Batch = dict[str, list[Observation]]  # query -> observations
 
@@ -366,7 +368,8 @@ def build_payload(panels: list[Panel], processed: dict[str, list[Observation]],
                   errors: dict[str, str], today: str) -> dict:
     return {
         "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "sections": [{"id": section_id, "title": title} for section_id, title in SECTIONS],
+        "sections": [{"id": section_id, "title": title, "recessions": RECESSIONS_BY_SECTION.get(section_id)}
+                     for section_id, title in SECTIONS],
         "panels": [
             {
                 "id": panel.id,
@@ -383,6 +386,17 @@ def build_payload(panels: list[Panel], processed: dict[str, list[Observation]],
             for panel in panels
         ],
     }
+
+
+def fetch_recessions(previous: dict | None) -> dict[str, list[list[str]]]:
+    """Recession periods per dating source, as [start, end) date pairs."""
+    euro_area = [list(period) for period in peak_trough_periods(EURO_AREA_PEAKS_AND_TROUGHS)]
+    try:
+        us = [list(period) for period in recession_periods(fetch_fred("USREC"))]
+    except Exception as error:  # keep the last known US dates rather than losing the shading
+        print(f"  FAIL USREC: {describe(error)}")
+        us = (previous or {}).get("recessions", {}).get("us", [])
+    return {"us": us, "euro_area": euro_area}
 
 
 def load_previous_payload(path: Path) -> dict | None:
@@ -444,7 +458,9 @@ def main() -> int:
 
     processed, errors = apply_transforms(all_series, observations, failures)
     payload = build_payload(PANELS, processed, errors, today)
-    reused = reuse_previous_data(payload, load_previous_payload(OUTPUT_PATH), today)
+    previous = load_previous_payload(OUTPUT_PATH)
+    reused = reuse_previous_data(payload, previous, today)
+    payload["recessions"] = fetch_recessions(previous)
     write_data_js(payload, OUTPUT_PATH)
     for key, message in errors.items():
         print(f"  FAIL {key}: {message}")

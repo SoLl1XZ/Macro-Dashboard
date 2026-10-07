@@ -120,6 +120,36 @@ def infer_frequency(obs: list[Observation]) -> str | None:
     return "A"
 
 
+def recession_periods(indicator: list[Observation]) -> list[tuple[str, str]]:
+    """Turn a monthly 0/1 recession indicator (FRED's USREC) into (start, end) periods.
+
+    The end is the first day after the last recession month.
+    """
+    periods = []
+    start = None
+    for d, value in indicator:
+        if value >= 0.5 and start is None:
+            start = d
+        elif value < 0.5 and start is not None:
+            periods.append((start, d))
+            start = None
+    if start is not None:  # still in a recession at the end of the data
+        periods.append((start, shift_months(indicator[-1][0], 1)))
+    return periods
+
+
+def quarter_start(quarter: str) -> str:
+    """'2008-Q1' -> '2008-01-01'."""
+    year, number = quarter.split("-Q")
+    return f"{year}-{3 * int(number) - 2:02d}-01"
+
+
+def peak_trough_periods(peaks_and_troughs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """CEPR's convention: a recession runs from the quarter after the peak through the trough quarter."""
+    return [(shift_months(quarter_start(peak), 3), shift_months(quarter_start(trough), 3))
+            for peak, trough in peaks_and_troughs]
+
+
 # How many days after the start of its period the latest observation may be before the
 # series counts as stale. Generous because data is published with a lag: monthly CPI
 # arrives weeks after month-end, quarterly GDP one to two months after quarter-end.

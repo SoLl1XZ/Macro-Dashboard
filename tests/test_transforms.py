@@ -1,7 +1,8 @@
 import unittest
 
-from transforms import (change_since, difference, infer_frequency, is_stale, percentile_rank,
-                        shift_months, spread, summarize, thin_before, year_over_year)
+from transforms import (change_since, difference, infer_frequency, is_stale, peak_trough_periods,
+                        percentile_rank, recession_periods, shift_months, spread, summarize,
+                        thin_before, year_over_year)
 
 
 def monthly(start_year: int, values: list[float]) -> list[tuple[str, float]]:
@@ -114,6 +115,17 @@ class InferFrequencyTest(unittest.TestCase):
 
     def test_single_observation_is_unknown(self):
         self.assertIsNone(infer_frequency([("2026-01-01", 1.0)]))
+
+
+class RecessionPeriodsTest(unittest.TestCase):
+    def test_indicator_months_become_periods(self):
+        indicator = monthly(2020, [0, 0, 1, 1, 0, 0, 1])  # Mar–Apr 2020, then Jul onwards
+        self.assertEqual(recession_periods(indicator),
+                         [("2020-03-01", "2020-05-01"), ("2020-07-01", "2020-08-01")])
+
+    def test_peak_and_trough_quarters_follow_cepr_convention(self):
+        # Peak 2019Q4, trough 2020Q2: recession is 2020Q1 through 2020Q2.
+        self.assertEqual(peak_trough_periods([("2019-Q4", "2020-Q2")]), [("2020-01-01", "2020-07-01")])
 
 
 class IsStaleTest(unittest.TestCase):

@@ -57,6 +57,16 @@ class Panel:
     reference_lines: tuple[tuple[float, str], ...] = ()
 
 
+# Euro area recessions as (peak quarter, trough quarter) from the CEPR-EABCN Business Cycle
+# Dating Committee, checked 2026-10-07 at
+# https://eabcn.org/dbc/peaksandtroughs/chronology-euro-area-business-cycles
+# The committee has no API, so a new decision must be added here by hand. Earlier
+# recessions (1974–1993) are left out: the dashboard starts in 2000.
+EURO_AREA_PEAKS_AND_TROUGHS = [("2008-Q1", "2009-Q2"), ("2011-Q3", "2013-Q1"), ("2019-Q4", "2020-Q2")]
+
+# Which recession dating is shaded behind the charts of each section.
+RECESSIONS_BY_SECTION = {"us": "us", "europe": "euro_area", "denmark": "euro_area"}
+
 INFLATION_TARGET_FED = ((2.0, "Fed-mål 2 %"),)
 INFLATION_TARGET_ECB = ((2.0, "ECB-mål 2 %"),)
 
