@@ -62,4 +62,5 @@ python3 -m unittest discover tests
 - **Statistikbankens BULK-svar er ikke sorteret efter dato** – `to_observations` sorterer.
 - **Eurostat:** eurozonen hedder `EA21` fra 2026 (`EA20` stopper i 2025; nogle datasæt bruger `EA`). År-over-år-vækst (`PCH_SM`) findes kun for kalenderkorrigerede data (`s_adj=CA`).
 - **Manuelle lister:** CEPR-recessioner (`indicators.py`) og ECB/Fed-møder (`events.py`) har intet API. Siden advarer, når mødelisterne løber tør.
+- **DOM:** `append()` returnerer `undefined`. Kæd aldrig `x.append(...).append(...)`; brug en variabel eller `appendChild()`.
 - **Ingen to y-akser** (heller ikke i Sammenlign): forskellige enheder vises som to grafer, eller begge omregnes til indeks 100.
