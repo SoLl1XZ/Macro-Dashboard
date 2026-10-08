@@ -43,7 +43,7 @@ class CatalogTest(unittest.TestCase):
     def test_sections_are_in_the_agreed_menu_order(self):
         # The page adds Signaler in front and Sammenlign at the end of these.
         self.assertEqual([section.id for section in SECTIONS],
-                         ["global", "north-america", *COUNTRIES_BY_REGION["north-america"],
+                         ["global", "commodities", "north-america", *COUNTRIES_BY_REGION["north-america"],
                           "europe", *COUNTRIES_BY_REGION["europe"],
                           "asia", *COUNTRIES_BY_REGION["asia"]])
 
@@ -69,6 +69,23 @@ class CatalogTest(unittest.TestCase):
         for s in ALL_SERIES:
             if s.source == "derived":
                 self.assertLessEqual(set(s.query), fetched_keys, s.key)
+
+
+class CommoditiesTest(unittest.TestCase):
+    PANELS = [panel for panel in PANELS if panel.section == "commodities"]
+
+    def test_groups_come_in_the_agreed_order(self):
+        groups = list(dict.fromkeys(panel.group for panel in self.PANELS))
+        self.assertEqual(groups, ["Indeks", "Energi", "Industrimetaller", "Ædelmetaller", "Landbrug"])
+
+    def test_prices_change_in_percent(self):
+        for panel in self.PANELS:
+            self.assertEqual(panel.change, "pct", panel.id)
+
+    def test_moved_series_keep_their_keys(self):
+        # Links and saved comparisons from before the Råvarer tab use these keys.
+        keys = {s.key for s in owned_series(self.PANELS)}
+        self.assertLessEqual({"brent", "wti", "gas_us", "gas_eu", "copper", "wheat"}, keys)
 
 
 class RegionTest(unittest.TestCase):
