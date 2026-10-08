@@ -134,6 +134,12 @@ class WeeklyMoveTest(unittest.TestCase):
         _, move = weekly_move(daily("2015-01-01", values), "diff")
         self.assertAlmostEqual(move, 6 / math.sqrt(50), places=2)  # ≈ 0.85
 
+    def test_weekly_move_needs_data_from_this_week(self):
+        values = [float(i + i % 2) for i in range(self.DAYS)]
+        obs = daily("2015-01-01", values)  # last day: 2025-12-28
+        self.assertIsNotNone(summarize(obs, "diff", today="2026-01-02")["weekMoveZ"])  # 5 days old
+        self.assertIsNone(summarize(obs, "diff", today="2026-01-20")["weekMoveZ"])  # 23 days old
+
     def test_monthly_series_has_no_weekly_move(self):
         self.assertIsNone(weekly_move(monthly(2015, [float(i) for i in range(140)]), "diff"))
 

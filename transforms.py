@@ -72,6 +72,7 @@ def change_since(obs: list[Observation], months: int, kind: str) -> float | None
 
 PERCENTILE_YEARS = 10
 MIN_PERCENTILE_OBSERVATIONS = 24
+MAX_WEEKLY_MOVE_AGE_DAYS = 7
 
 
 def history_window(obs: list[Observation], years: int) -> list[Observation] | None:
@@ -152,7 +153,10 @@ def summarize(obs: list[Observation], kind: str, today: str) -> dict | None:
     if not known:
         return None
     last_date, last_value = known[-1]
-    move = weekly_move(known, kind)
+    # "This week's move" only holds if the series has data from this week; otherwise a
+    # lagging source (BIS policy rates) would show a rate change from weeks ago.
+    age_days = (date.fromisoformat(today) - date.fromisoformat(last_date)).days
+    move = weekly_move(known, kind) if age_days <= MAX_WEEKLY_MOVE_AGE_DAYS else None
     return {
         "lastDate": last_date,
         "last": last_value,
