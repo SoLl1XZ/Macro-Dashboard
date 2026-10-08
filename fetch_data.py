@@ -46,13 +46,19 @@ USER_AGENT = "curl/8.7.1"
 
 # --------------------------------------------------------------------------- helpers
 
-def http_get(url: str, accept: str | None = None, attempts: int = 3, errors: str = "strict") -> str:
+def http_get(url: str, accept: str | None = None, attempts: int = 3, errors: str = "strict",
+             retry_not_found: bool = False) -> str:
     """GET a URL as text. errors="replace" tolerates bytes that aren't valid UTF-8."""
-    return http_get_bytes(url, accept, attempts).decode("utf-8", errors=errors)
+    return http_get_bytes(url, accept, attempts, retry_not_found).decode("utf-8", errors=errors)
 
 
-def http_get_bytes(url: str, accept: str | None = None, attempts: int = 3) -> bytes:
-    """GET a URL as raw bytes, e.g. a spreadsheet."""
+def http_get_bytes(url: str, accept: str | None = None, attempts: int = 3,
+                   retry_not_found: bool = False) -> bytes:
+    """GET a URL as raw bytes, e.g. a spreadsheet.
+
+    retry_not_found tries a 404 once more, for an API that sometimes answers 404 for
+    something that exists.
+    """
     headers = {"User-Agent": USER_AGENT}
     if accept:
         headers["Accept"] = accept
@@ -64,7 +70,9 @@ def http_get_bytes(url: str, accept: str | None = None, attempts: int = 3) -> by
         except urllib.error.HTTPError as error:
             # A 4xx means the query itself is wrong, so retrying cannot help.
             # 429 (rate limited) and 5xx (server trouble) are often temporary.
-            if not (error.code == 429 or error.code >= 500) or attempt == attempts:
+            temporary = error.code == 429 or error.code >= 500
+            second_chance = retry_not_found and error.code == 404 and attempt == 1
+            if not (temporary or second_chance) or attempt == attempts:
                 raise
         except (urllib.error.URLError, TimeoutError):
             if attempt == attempts:
@@ -125,7 +133,9 @@ def group_sdmx_rows(text: str, key_column: str) -> Batch:
 def fetch_fred(series_id: str) -> list[Observation]:
     # The fredgraph CSV endpoint needs no API key (the JSON API does).
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}&cosd={FETCH_START}"
-    rows = list(csv.reader(io.StringIO(http_get(url))))
+    # FRED now and then answers 404 for a series that exists (twice from GitHub's servers on
+    # 2026-10-08), so a 404 gets a second try before it counts as a wrong series id.
+    rows = list(csv.reader(io.StringIO(http_get(url, retry_not_found=True))))
     return to_observations((row[0], row[1]) for row in rows[1:] if len(row) >= 2)
 
 

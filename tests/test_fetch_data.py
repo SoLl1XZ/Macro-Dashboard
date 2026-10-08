@@ -156,6 +156,44 @@ class BuildPayloadTest(unittest.TestCase):
         self.assertEqual(payload["panels"][0]["series"][0]["data"], [["2000-01-01", 2.0]])
 
 
+class HttpRetryTest(unittest.TestCase):
+    """http_get's retries, with urlopen replaced so nothing goes over the network."""
+
+    CSV = b"observation_date,X\n2026-07-01,3158.3\n"
+
+    @staticmethod
+    def not_found():
+        # With a body (fp), so unittest can print the error if a test fails.
+        return urllib.error.HTTPError("https://example.org", 404, "Not Found", {}, io.BytesIO(b""))
+
+    def ok(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = self.CSV
+        return response
+
+    def test_fred_tries_a_404_once_more(self):
+        # FRED answered 404 for two existing series from GitHub's servers (2026-10-08).
+        with mock.patch.object(fetch_data.urllib.request, "urlopen", side_effect=[self.not_found(), self.ok()]), \
+                mock.patch.object(fetch_data.time, "sleep"):
+            self.assertEqual(fetch_data.fetch_fred("PALUMUSDM"), [("2026-07-01", 3158.3)])
+
+    def test_a_lasting_404_fails_after_the_second_try(self):
+        with mock.patch.object(fetch_data.urllib.request, "urlopen",
+                               side_effect=[self.not_found(), self.not_found(), self.ok()]) as urlopen, \
+                mock.patch.object(fetch_data.time, "sleep"):
+            with self.assertRaises(urllib.error.HTTPError):
+                fetch_data.fetch_fred("NOSUCHSERIES")
+        self.assertEqual(urlopen.call_count, 2)
+
+    def test_other_sources_give_up_on_a_404_at_once(self):
+        # For them a 404 means a wrong query, which no retry can fix.
+        with mock.patch.object(fetch_data.urllib.request, "urlopen", side_effect=[self.not_found(), self.ok()]) as urlopen, \
+                mock.patch.object(fetch_data.time, "sleep"):
+            with self.assertRaises(urllib.error.HTTPError):
+                fetch_data.http_get("https://example.org/data")
+        self.assertEqual(urlopen.call_count, 1)
+
+
 class FetchEurostatTest(unittest.TestCase):
     """fetch_eurostat with a canned JSON-stat answer instead of the network."""
 
