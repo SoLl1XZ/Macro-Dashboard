@@ -688,15 +688,32 @@ function renderHeatTile(panel) {
   return tile;
 }
 
+// The tiles of one section, or null if it owns no headline series (an overview that only
+// refers to its countries' series).
+function heatBlock(section, heading) {
+  const tiles = DATA.panels.filter(panel => panel.section === section.id && ownsHeadline(panel))
+    .map(renderHeatTile);
+  if (tiles.length === 0) return null;
+  const block = el("div", "heat-section");
+  if (heading) block.append(el("h4", "heat-section-title", heading));
+  const grid = el("div", "heat-grid");
+  grid.append(...tiles);
+  block.append(grid);
+  return block;
+}
+
+// One block per region (and for Global), with a sub-heading per country.
 function renderHeatmap() {
   const heatmap = el("div", "heatmap");
-  for (const section of DATA.sections) {
-    const block = el("section", "heat-section");
-    const grid = el("div", "heat-grid");
-    grid.append(...DATA.panels.filter(panel => panel.section === section.id && ownsHeadline(panel))
-      .map(renderHeatTile));
-    block.append(el("h3", "heat-section-title", section.title), grid);
-    heatmap.append(block);
+  for (const { section, countries } of sectionTree()) {
+    const blocks = [
+      heatBlock(section, countries.length ? "Oversigt" : null),
+      ...countries.map(country => heatBlock(country, country.title)),
+    ].filter(Boolean);
+    if (blocks.length === 0) continue;
+    const region = el("section", "heat-region");
+    region.append(el("h3", "heat-region-title", section.title), ...blocks);
+    heatmap.append(region);
   }
   return heatmap;
 }
@@ -815,17 +832,22 @@ function comparePanel(title, unit, decimals, series) {
 function renderSeriesSelect(label, selectedKey, lookup, onChange) {
   const field = el("label", "compare-field");
   const select = el("select");
-  for (const section of DATA.sections) {
-    const group = el("optgroup");
-    group.label = section.title;
-    for (const [key, entry] of lookup) {
-      if (entry.panel.section !== section.id) continue;
-      const option = el("option", "", entryName(entry));
-      option.value = key;
-      option.selected = key === selectedKey;
-      group.append(option);
+  // Grouped like the menu: "Europa", "Europa · Tyskland", ... Overviews that only refer to
+  // their countries' series have nothing of their own to list.
+  for (const { section, countries } of sectionTree()) {
+    for (const member of [section, ...countries]) {
+      const entries = [...lookup].filter(([, entry]) => entry.panel.section === member.id);
+      if (entries.length === 0) continue;
+      const group = el("optgroup");
+      group.label = member === section ? section.title : `${section.title} · ${member.title}`;
+      for (const [key, entry] of entries) {
+        const option = el("option", "", entryName(entry));
+        option.value = key;
+        option.selected = key === selectedKey;
+        group.append(option);
+      }
+      select.append(group);
     }
-    select.append(group);
   }
   select.addEventListener("change", () => onChange(select.value));
   field.append(el("span", "compare-label", label), select);

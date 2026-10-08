@@ -582,7 +582,14 @@ main {
   background: var(--heat-fill);
 }
 
-.heat-section + .heat-section { margin-top: 16px; }
+.heat-region + .heat-region { margin-top: 28px; }
+.heat-section + .heat-section { margin-top: 14px; }
+
+.heat-region-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
 
 .heat-section-title {
   margin: 0 0 6px;
