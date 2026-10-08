@@ -153,6 +153,72 @@ body {
   gap: 8px;
 }
 
+/* --------------------------------------------------------------- full screen */
+
+.has-modal { overflow: hidden; } /* the page behind the dialog doesn't scroll */
+
+.panel-dialog {
+  width: min(1200px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+}
+
+.panel-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+
+.panel-dialog-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+}
+
+.panel-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-dialog-title {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.panel-dialog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.panel-dialog-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.text-button {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.text-button:hover { background: var(--wash); color: var(--text-primary); }
+
+.chart-full { height: min(58vh, 560px); }
+.panel-dialog .chart-split { height: min(30vh, 280px); }
+
 /* ------------------------------------------------------------------- search */
 
 .search-button {
@@ -582,6 +648,50 @@ main {
   font-size: 10px;
 }
 
+.card-tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.icon-button:hover { background: var(--wash); color: var(--text-primary); }
+
+.icon-button:focus-visible,
+.text-button:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* With a mouse a click on a chart opens it in full screen. */
+@media (hover: hover) and (pointer: fine) {
+  .card .chart { cursor: zoom-in; }
+}
+
 /* Chart.js sizes the canvas to this box; the height includes the x-axis labels. */
 .chart {
   position: relative;
@@ -921,6 +1031,19 @@ main {
     margin-top: 12px;
     max-height: 80vh;
   }
+
+  /* Full screen fills the phone. */
+  .panel-dialog {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .panel-dialog-box { padding: 14px; }
+  .chart-full { height: 52vh; }
 
   /* The value goes under the name, so a long value doesn't squeeze the name. */
   .search-result {

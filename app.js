@@ -122,6 +122,22 @@ function el(tag, className, text) {
   return node;
 }
 
+const ICON_PATHS = {
+  expand: "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5",
+  close: "M6 6l12 12M18 6L6 18",
+};
+
+function icon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  svg.classList.add("icon");
+  const path = document.createElementNS(svg.namespaceURI, "path");
+  path.setAttribute("d", ICON_PATHS[name]);
+  svg.append(path);
+  return svg;
+}
+
 function seriesColor(index) {
   return `var(--series-${index + 1})`;
 }
@@ -346,21 +362,41 @@ function renderCsvButton(panel) {
   return button;
 }
 
+function renderExpandButton(panel) {
+  const button = el("button", "icon-button");
+  button.type = "button";
+  button.setAttribute("aria-label", `Vis ${panel.title} i fuldskærm`);
+  button.title = "Fuldskærm med zoom";
+  button.append(icon("expand"));
+  button.addEventListener("click", () => openFullscreen(panel));
+  return button;
+}
+
 function renderCard(panel) {
   const card = el("article", "card");
-  card.id = `panel-${panel.id}`; // target for the links on the Signals tab
+  card.id = `panel-${panel.id}`; // target for the panel anchor (#japan?panel=jp_jgb)
+  const hasData = panel.series.some(series => series.data.length > 0);
   const head = el("header", "card-head");
-  head.append(el("h3", "card-title", panel.title), el("span", "card-unit", panel.unit));
+  const tools = el("div", "card-tools");
+  tools.append(el("span", "card-unit", panel.unit));
+  if (hasData) tools.append(renderExpandButton(panel));
+  head.append(el("h3", "card-title", panel.title), tools);
   card.append(head, el("p", "card-desc", panel.description), renderHeadline(panel));
-  if (panel.series.some(series => series.data.length > 0)) {
-    card.append(panel.split ? renderSplitCharts(panel) : renderChartSlot(panel));
+  if (hasData) {
+    const charts = panel.split ? renderSplitCharts(panel) : renderChartSlot(panel);
+    // A click on the chart opens it in full screen, but only with a mouse: on a touch
+    // screen a tap shows the tooltip, so there the button is the way in.
+    charts.addEventListener("click", () => {
+      if (lastPointerType === "mouse") openFullscreen(panel);
+    });
+    card.append(charts);
   }
   if (panel.series.length > 1) card.append(renderSeriesTable(panel));
   const notes = renderNotes(panel);
   if (notes) card.append(notes);
   const footer = el("div", "card-footer");
   footer.append(renderSources(panel));
-  if (panel.series.some(series => series.data.length > 0)) footer.append(renderCsvButton(panel));
+  if (hasData) footer.append(renderCsvButton(panel));
   card.append(footer);
   return card;
 }
@@ -584,7 +620,7 @@ function chartOptions(panel) {
     scales: {
       x: {
         type: "time",
-        min: rangeStart(rangeYears),
+        min: panel.xMin ?? rangeStart(rangeYears),
         max: panel.xMax, // a split card's charts end on the same date, so they line up
         time: { unit: timeUnit(rangeYears) },
         grid: { display: false },
@@ -632,8 +668,10 @@ function renderSplitCharts(panel) {
   return box;
 }
 
-function createChart(canvas, panel) {
-  return new Chart(canvas, { type: "line", data: { datasets: buildDatasets(panel) }, options: chartOptions(panel) });
+function createChart(canvas, panel, zoom = null) {
+  const options = chartOptions(panel);
+  if (zoom) options.plugins.zoom = zoom; // only the full-screen charts zoom and pan
+  return new Chart(canvas, { type: "line", data: { datasets: buildDatasets(panel) }, options });
 }
 
 function destroyCharts() {
@@ -990,6 +1028,168 @@ function renderCompare(params) {
     chart.update();
   }
   activeCharts.push(...created);
+}
+
+// ---------------------------------------------------------------------- full screen
+// One panel in a large modal, with zoom (scroll wheel, pinch) and pan (drag) on the time
+// axis only; the y-axis follows what is visible. "&panel=<id>&full=1" in the URL opens it,
+// so the back button closes it and a link can open it directly, and "&from=YYYY-MM&to=YYYY-MM"
+// keeps a zoomed window.
+
+const DAY_MS = 86_400_000;
+let dialogCharts = [];
+let dialogPanelId = null;
+let dialogOpenedHere = false; // opened by a click here, so closing can go back in history
+let keepScrollOnce = false; // closing full screen must not jump to the previous URL's panel
+let lastPointerType = "mouse";
+
+function findPanel(panelId) {
+  return DATA.panels.find(panel => panel.id === panelId) ?? null;
+}
+
+function monthStart(month) {
+  const [year, number] = month.split("-").map(Number);
+  return Date.UTC(year, number - 1, 1);
+}
+
+function monthEnd(month) {
+  const [year, number] = month.split("-").map(Number);
+  return Date.UTC(year, number, 1) - 1;
+}
+
+function toMonth(timestamp) {
+  return new Date(timestamp).toISOString().slice(0, 7);
+}
+
+// First and last date of a panel's data: zooming out or panning stops there.
+function dataSpan(panel) {
+  const withData = panel.series.filter(series => series.data.length > 0);
+  return {
+    min: Math.min(...withData.map(series => Date.parse(series.data[0][0]))),
+    max: Math.max(...withData.map(series => Date.parse(series.data.at(-1)[0]))),
+  };
+}
+
+function openFullscreen(panel) {
+  const state = parseHash();
+  dialogOpenedHere = true;
+  location.hash = hashFor(state.sectionId, rangeYears,
+                          { ...Object.fromEntries(state.params), panel: panel.id, full: true });
+}
+
+// The URL of the open panel, with its window as whole months (or none: the default).
+function fullscreenHash(view) {
+  const state = parseHash();
+  const extra = { ...Object.fromEntries(state.params), panel: state.panel, full: true };
+  if (view) Object.assign(extra, { from: toMonth(view.min), to: toMonth(view.max) });
+  return hashFor(state.sectionId, state.rangeYears, extra);
+}
+
+// Shows the same window in every chart of the dialog (a split panel has several) and keeps
+// it in the URL. replaceState: a zoom is not a step the back button should undo.
+function setDialogWindow(view, source = null) {
+  for (const chart of dialogCharts) {
+    if (chart === source) continue;
+    chart.options.scales.x.min = view ? view.min : chart.defaultWindow.min;
+    chart.options.scales.x.max = view ? view.max : chart.defaultWindow.max;
+    chart.update("none");
+  }
+  history.replaceState(null, "", fullscreenHash(view));
+}
+
+function zoomOptions(span) {
+  const changed = ({ chart }) => setDialogWindow({ min: chart.scales.x.min, max: chart.scales.x.max }, chart);
+  return {
+    limits: { x: { min: span.min, max: span.max, minRange: 60 * DAY_MS } },
+    pan: { enabled: true, mode: "x", onPanComplete: changed },
+    zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: "x", onZoomComplete: changed },
+  };
+}
+
+function renderPanelDialogContent(panel) {
+  const head = el("header", "panel-dialog-head");
+  const titles = el("div");
+  const title = el("h2", "panel-dialog-title", panel.title);
+  title.id = "panel-dialog-title";
+  titles.append(title, el("p", "card-desc", panel.description));
+  const close = el("button", "icon-button");
+  close.type = "button";
+  close.setAttribute("aria-label", "Luk fuldskærm");
+  close.append(icon("close"));
+  close.addEventListener("click", () => document.getElementById("panel-dialog").close());
+  head.append(titles, close);
+
+  const toolbar = el("div", "panel-dialog-toolbar");
+  const reset = el("button", "text-button", "Nulstil zoom");
+  reset.type = "button";
+  reset.addEventListener("click", () => setDialogWindow(null));
+  toolbar.append(reset, el("span", "card-unit", panel.unit),
+                 el("span", "panel-dialog-hint", "Scroll eller knib for at zoome, træk for at flytte"));
+
+  const nodes = [head, renderHeadline(panel), toolbar,
+                 panel.split ? renderSplitCharts(panel) : renderChartSlot(panel, "chart chart-full")];
+  if (panel.series.length > 1) nodes.push(renderSeriesTable(panel));
+  const notes = renderNotes(panel);
+  if (notes) nodes.push(notes);
+  const footer = el("div", "card-footer");
+  footer.append(renderSources(panel), renderCsvButton(panel));
+  nodes.push(footer);
+  return nodes;
+}
+
+function openPanelDialog(panelId, from, to) {
+  const dialog = document.getElementById("panel-dialog");
+  const panel = findPanel(panelId);
+  if (!panel || typeof Chart === "undefined" || !panel.series.some(series => series.data.length)) {
+    if (dialog.open) dialog.close();
+    return;
+  }
+  const view = from && to ? { min: monthStart(from), max: monthEnd(to) } : null;
+  if (dialog.open && dialogPanelId === panelId) return; // already showing it
+  for (const chart of dialogCharts) chart.destroy();
+  dialogCharts = [];
+  dialogPanelId = panelId;
+  const box = document.getElementById("panel-dialog-box");
+  box.replaceChildren(...renderPanelDialogContent(panel));
+  if (!dialog.open) dialog.showModal();
+  document.documentElement.classList.add("has-modal");
+  const span = dataSpan(panel);
+  for (const canvas of box.querySelectorAll("canvas")) {
+    const part = view ? { ...canvas.chartPanel, xMin: view.min, xMax: view.max } : canvas.chartPanel;
+    const chart = createChart(canvas, part, zoomOptions(span));
+    chart.defaultWindow = { min: rangeStart(rangeYears), max: canvas.chartPanel.xMax };
+    dialogCharts.push(chart);
+  }
+}
+
+// However the dialog closes (button, Escape, backdrop, back button), its charts go, and if
+// the URL still says full screen it is taken out: by going back if this page added it,
+// otherwise (a link opened in full screen) by rewriting the URL.
+function onPanelDialogClose() {
+  for (const chart of dialogCharts) chart.destroy();
+  dialogCharts = [];
+  dialogPanelId = null;
+  document.documentElement.classList.remove("has-modal");
+  const openedHere = dialogOpenedHere;
+  dialogOpenedHere = false;
+  const state = parseHash();
+  if (!state.full) return; // the URL already changed, e.g. the back button
+  keepScrollOnce = true;
+  if (openedHere) {
+    history.back();
+  } else {
+    history.replaceState(null, "", hashFor(state.sectionId, state.rangeYears,
+                                           { ...Object.fromEntries(state.params), panel: state.panel }));
+    route();
+  }
+}
+
+function initPanelDialog() {
+  const dialog = document.getElementById("panel-dialog");
+  dialog.addEventListener("close", onPanelDialogClose);
+  dialog.addEventListener("click", event => {
+    if (event.target === dialog) dialog.close(); // a click on the backdrop
+  });
 }
 
 // --------------------------------------------------------------------------- search
@@ -1376,8 +1576,13 @@ function route(force = false) {
     shownView = view;
     shownSectionId = state.sectionId;
   }
-  if (state.panel && (state.panel !== shownPanelId || (redraw && !force))) focusPanel(state.panel);
+  const panelChanged = state.panel !== shownPanelId || (redraw && !force);
+  if (state.panel && panelChanged && !keepScrollOnce) focusPanel(state.panel);
+  keepScrollOnce = false;
   shownPanelId = state.panel;
+  const dialog = document.getElementById("panel-dialog");
+  if (state.full && state.panel) openPanelDialog(state.panel, state.from, state.to);
+  else if (dialog.open) dialog.close(); // e.g. the back button
 }
 
 function init() {
@@ -1390,6 +1595,8 @@ function init() {
     Chart.Interaction.modes.nearestPerSeries = nearestPerSeries;
     // Registration order is drawing order: recession bands go behind the reference lines.
     Chart.register(recessionPlugin, referenceLinesPlugin, crosshairPlugin);
+    // Zoom and pan stay off unless a chart turns them on (only in full screen).
+    if (typeof ChartZoom !== "undefined") Chart.register(ChartZoom);
   }
   for (const button of document.querySelectorAll("#range-picker button")) {
     // Only changes the URL; the hashchange event then redraws the page from it.
@@ -1405,6 +1612,10 @@ function init() {
     for (const item of document.querySelectorAll('.tab-region[data-open="true"]')) setRegionOpen(item, false);
   });
   initSearch();
+  initPanelDialog();
+  // Remember how the last click was made: a tap on a chart shows its tooltip, a mouse
+  // click opens it in full screen.
+  document.addEventListener("pointerdown", event => { lastPointerType = event.pointerType; }, true);
   window.addEventListener("hashchange", () => route());
   // Chart colours are read from CSS when a chart is created, so redraw if the theme flips.
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => route(true));

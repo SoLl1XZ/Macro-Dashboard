@@ -49,6 +49,11 @@
     <div class="panel-grid" id="panels"></div>
   </main>
 
+  <!-- One panel in full screen; filled in by app.js. -->
+  <dialog class="panel-dialog" id="panel-dialog" aria-labelledby="panel-dialog-title">
+    <div class="panel-dialog-box" id="panel-dialog-box"></div>
+  </dialog>
+
   <!-- The search palette. showModal() makes the rest of the page inert and keeps Tab inside. -->
   <dialog class="search-dialog" id="search-dialog" aria-label="Søg i dashboardet">
     <div class="search-box">
@@ -75,6 +80,13 @@
           crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"
           integrity="sha384-cVMg8E3QFwTvGCDuK+ET4PD341jF3W8nO1auiXfuZNQkzbUUiBGLsIQUE+b1mxws"
+          crossorigin="anonymous"></script>
+  <!-- Zoom and pan in full screen; the plugin uses Hammer for touch gestures and dragging. -->
+  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"
+          integrity="sha384-Cs3dgUx6+jDxxuqHvVH8Onpyj2LF1gKZurLDlhqzuJmUqVYMJ0THTWpxK5Z086Zm"
+          crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"
+          integrity="sha384-dwwI6ICEN/0ZQlS5owhUa/6ZzvwUPmjH45bFVCAcjgjTulbHJvlE+TGU3g1k0N3R"
           crossorigin="anonymous"></script>
   <script src="lib.js"></script>
   <script src="app.js"></script>
