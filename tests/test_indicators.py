@@ -1,7 +1,9 @@
 """Consistency checks for the catalog, so a typo is caught before a fetch run."""
 
+import re
 import unittest
 from collections import Counter
+from pathlib import Path
 
 from fetch_data import BATCH_FETCHERS, SINGLE_FETCHERS
 from indicators import CORE_GROUP, CORE_TITLES, INPUT_SERIES, PANELS, SECTIONS, Ref, owned_series
@@ -106,6 +108,15 @@ class RegionTest(unittest.TestCase):
         # Old links such as #europe?range=10 or #denmark must keep working.
         ids = {section.id for section in SECTIONS}
         self.assertLessEqual({"global", "us", "europe", "denmark", "asia", "china", "japan", "korea"}, ids)
+
+
+class CompareParametersTest(unittest.TestCase):
+    def test_lib_js_lists_the_core_titles_in_order(self):
+        # The Compare tab finds a country's core panel by title, so lib.js must use the
+        # same titles as CORE_TITLES here.
+        lib = (Path(__file__).parent.parent / "lib.js").read_text(encoding="utf-8")
+        block = lib[lib.index("const COMPARE_PARAMETERS"):lib.index("];", lib.index("const COMPARE_PARAMETERS"))]
+        self.assertEqual(re.findall(r'title: "([^"]+)"', block), list(CORE_TITLES))
 
 
 class CorePanelsTest(unittest.TestCase):

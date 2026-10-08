@@ -28,6 +28,11 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover tests
 
+      # The page's pure logic (lib.js) is tested with Node's built-in test runner;
+      # Node is preinstalled on GitHub's Ubuntu runners.
+      - name: Run JavaScript tests
+        run: node --test tests/js/*.test.js
+
       - name: Fetch data
         run: python fetch_data.py
 
@@ -63,7 +68,7 @@ jobs:
       - name: Collect site files
         run: |
           mkdir _site
-          cp index.html app.js style.css favicon.svg _site/
+          cp index.html lib.js app.js style.css favicon.svg _site/
           cp -r data _site/
 
       - uses: actions/configure-pages@v6

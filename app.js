@@ -367,8 +367,7 @@ function renderCard(panel) {
 
 // -------------------------------------------------------------------------- charts
 
-const DEFAULT_RANGE_YEARS = 5; // short enough that 2020's outliers don't flatten every chart
-let rangeYears = DEFAULT_RANGE_YEARS; // 0 = all data
+let rangeYears = DEFAULT_RANGE_YEARS; // 0 = all data; the default comes from lib.js
 let activeCharts = [];
 
 const AXIS_NUMBER_FORMAT = new Intl.NumberFormat("da-DK", { maximumFractionDigits: 2 });
@@ -992,9 +991,8 @@ function renderCompare(params) {
 // ---------------------------------------------------------------- sections + routing
 
 // The URL is the single source of truth for what is shown: "#europe?range=10" means the
-// Europe tab with 10 years of history. So a copied link, a reload or the back button
-// restores exactly the same view. The default range is left out to keep links short.
-const VALID_RANGES = [1, 5, 10, 0];
+// Europe tab with 10 years of history. Parsing and building it are pure functions in lib.js
+// (parseHashState, buildHash), tested in tests/js.
 
 // The Signals overview is a tab of the page only; the data sections come from data.js.
 function allTabs() {
@@ -1002,23 +1000,11 @@ function allTabs() {
 }
 
 function parseHash() {
-  const [sectionPart, query = ""] = location.hash.slice(1).split("?");
-  const params = new URLSearchParams(query);
-  const hasRange = params.has("range");
-  const range = Number(params.get("range"));
-  params.delete("range");
-  return {
-    sectionId: allTabs().some(tab => tab.id === sectionPart) ? sectionPart : SIGNALS_TAB.id,
-    rangeYears: hasRange && VALID_RANGES.includes(range) ? range : DEFAULT_RANGE_YEARS,
-    params, // anything else, e.g. the series chosen on the Compare tab
-  };
+  return parseHashState(location.hash, allTabs().map(tab => tab.id), SIGNALS_TAB.id);
 }
 
 function hashFor(sectionId, years, extra = {}) {
-  const params = new URLSearchParams(extra);
-  if (years !== DEFAULT_RANGE_YEARS) params.set("range", years);
-  const query = params.toString();
-  return `#${sectionId}${query ? `?${query}` : ""}`;
+  return buildHash(sectionId, years, extra);
 }
 
 // Top-level sections in menu order, each with its countries (none for Global). Data files
