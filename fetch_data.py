@@ -17,7 +17,7 @@ from pathlib import Path
 
 from events import calendar_warnings, upcoming_events
 from indicators import (EURO_AREA_PEAKS_AND_TROUGHS, PANELS, RECESSIONS_BY_SECTION, SECTIONS,
-                        Panel, Series)
+                        Panel, Series, owned_series)
 from transforms import (Observation, difference, infer_frequency, is_stale, peak_trough_periods,
                         recession_periods, shift_months, spread, summarize, thin_before,
                         year_over_year)
@@ -481,8 +481,9 @@ def build_payload(panels: list[Panel], processed: dict[str, list[Observation]],
                   errors: dict[str, str], today: str) -> dict:
     return {
         "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "sections": [{"id": section_id, "title": title, "recessions": RECESSIONS_BY_SECTION.get(section_id)}
-                     for section_id, title in SECTIONS],
+        "sections": [{"id": section.id, "title": section.title, "region": section.region,
+                      "recessions": RECESSIONS_BY_SECTION.get(section.id)}
+                     for section in SECTIONS],
         "panels": [
             {
                 "id": panel.id,
@@ -494,7 +495,10 @@ def build_payload(panels: list[Panel], processed: dict[str, list[Observation]],
                 "decimals": panel.decimals,
                 "group": panel.group,
                 "referenceLines": [{"value": value, "label": label} for value, label in panel.reference_lines],
-                "series": [series_payload(s, panel, processed, errors, today) for s in panel.series],
+                # A reference is only a pointer; the page fills in the owner's data.
+                "series": [series_payload(s, panel, processed, errors, today) if isinstance(s, Series)
+                           else {"ref": s.key, "label": s.label}
+                           for s in panel.series],
             }
             for panel in panels
         ],
@@ -550,10 +554,12 @@ def reuse_previous_data(payload: dict, previous: dict | None, today: str) -> lis
     """
     if previous is None:
         return []
-    previous_by_key = {s["key"]: s for panel in previous["panels"] for s in panel["series"]}
+    previous_by_key = {s["key"]: s for panel in previous["panels"] for s in panel["series"] if "key" in s}
     reused = []
     for panel in payload["panels"]:
         for index, series in enumerate(panel["series"]):
+            if "ref" in series:  # a reference shows its owner's series, fallback included
+                continue
             old = previous_by_key.get(series["key"])
             if series["data"] or not old or not old["data"]:
                 continue
@@ -581,7 +587,7 @@ def write_data_js(payload: dict, path: Path) -> None:
 
 def main() -> int:
     today = date.today().isoformat()
-    all_series = [s for panel in PANELS for s in panel.series]
+    all_series = owned_series(PANELS)
     print("Fetching...")
     observations, failures = fetch_all(all_series)
     if "--verbose" in sys.argv:

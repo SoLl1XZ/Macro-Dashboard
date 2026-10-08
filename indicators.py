@@ -20,15 +20,25 @@ Query format per source:
 
 from dataclasses import dataclass
 
-SECTIONS: list[tuple[str, str]] = [
-    ("global", "Global"),
-    ("us", "USA"),
-    ("europe", "Europa"),
-    ("denmark", "Danmark"),
-    ("asia", "Asien"),
-    ("china", "Kina"),
-    ("japan", "Japan"),
-    ("korea", "Sydkorea"),
+
+@dataclass(frozen=True)
+class Section:
+    id: str
+    title: str
+    # The id of the region the section belongs to, or None for a top-level tab.
+    # A top-level section that other sections point to is that region's overview.
+    region: str | None = None
+
+
+SECTIONS: list[Section] = [
+    Section("global", "Global"),
+    Section("us", "USA"),
+    Section("europe", "Europa"),
+    Section("denmark", "Danmark"),
+    Section("asia", "Asien"),
+    Section("china", "Kina"),
+    Section("japan", "Japan"),
+    Section("korea", "Sydkorea"),
 ]
 
 
@@ -44,13 +54,23 @@ class Series:
 
 
 @dataclass(frozen=True)
+class Ref:
+    """Shows a series that another panel owns, e.g. a country's inflation in a regional overview.
+
+    The data is fetched once, and the Signals tab only counts it where it is owned.
+    """
+    key: str
+    label: str
+
+
+@dataclass(frozen=True)
 class Panel:
     id: str
     section: str
     title: str
     unit: str
     description: str
-    series: tuple[Series, ...]
+    series: tuple[Series | Ref, ...]
     # How headline changes are shown: "diff" = difference in the unit (%-points for rates),
     # "pct" = percent change (prices, indices, exchange rates).
     change: str = "diff"
@@ -77,6 +97,15 @@ INFLATION_TARGET_ECB = ((2.0, "ECB-mål 2 %"),)
 
 def S(key: str, label: str, source: str, query, transform: str | None = None) -> Series:
     return Series(key, label, source, query, transform)
+
+
+def R(key: str, label: str) -> Ref:
+    return Ref(key, label)
+
+
+def owned_series(panels: list[Panel]) -> list[Series]:
+    """Every series the catalog fetches: references are left out, their data comes from the owner."""
+    return [s for panel in panels for s in panel.series if isinstance(s, Series)]
 
 
 PANELS: list[Panel] = [

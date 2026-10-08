@@ -4,9 +4,10 @@ import unittest
 from collections import Counter
 
 from fetch_data import BATCH_FETCHERS, SINGLE_FETCHERS
-from indicators import PANELS, SECTIONS
+from indicators import PANELS, SECTIONS, Ref, owned_series
 
-ALL_SERIES = [s for panel in PANELS for s in panel.series]
+ALL_SERIES = owned_series(PANELS)
+ALL_REFS = [(panel, s) for panel in PANELS for s in panel.series if isinstance(s, Ref)]
 KNOWN_SOURCES = set(SINGLE_FETCHERS) | set(BATCH_FETCHERS) | {"derived"}
 
 
@@ -18,7 +19,7 @@ class CatalogTest(unittest.TestCase):
             self.assertEqual(duplicates, [], f"duplicate {name}")
 
     def test_sections_and_sources_are_known(self):
-        section_ids = {section_id for section_id, _ in SECTIONS}
+        section_ids = {section.id for section in SECTIONS}
         for panel in PANELS:
             self.assertIn(panel.section, section_ids, panel.id)
             self.assertIn(panel.change, {"diff", "pct"}, panel.id)
@@ -34,16 +35,25 @@ class CatalogTest(unittest.TestCase):
 
     def test_sections_are_in_the_agreed_tab_order(self):
         # The page adds Signaler in front and Sammenlign at the end of these.
-        self.assertEqual([section_id for section_id, _ in SECTIONS],
+        self.assertEqual([section.id for section in SECTIONS],
                          ["global", "us", "europe", "denmark", "asia", "china", "japan", "korea"])
 
     def test_panels_of_a_group_are_adjacent(self):
         # The page starts a new sub-heading whenever the group changes, so a group split
         # by another group would show its heading twice.
-        for section_id, _ in SECTIONS:
-            groups_in_order = [p.group for p in PANELS if p.section == section_id and p.group]
+        for section in SECTIONS:
+            groups_in_order = [p.group for p in PANELS if p.section == section.id and p.group]
             runs = [group for i, group in enumerate(groups_in_order) if i == 0 or groups_in_order[i - 1] != group]
-            self.assertEqual(len(runs), len(set(runs)), f"{section_id}: {runs}")
+            self.assertEqual(len(runs), len(set(runs)), f"{section.id}: {runs}")
+
+    def test_references_point_to_series_owned_elsewhere(self):
+        owner_by_key = {s.key: panel for panel in PANELS for s in panel.series if not isinstance(s, Ref)}
+        for panel, ref in ALL_REFS:
+            with self.subTest(panel=panel.id, ref=ref.key):
+                self.assertIn(ref.key, owner_by_key)
+                # The page shows the owner's 1-month and 1-year changes, which are computed
+                # as differences or as percent changes depending on the panel.
+                self.assertEqual(owner_by_key[ref.key].change, panel.change)
 
     def test_derived_series_use_fetched_series_as_input(self):
         fetched_keys = {s.key for s in ALL_SERIES if s.source != "derived"}

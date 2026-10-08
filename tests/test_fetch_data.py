@@ -11,7 +11,7 @@ import fetch_data
 from fetch_data import (apply_transforms, build_payload, fetch_source, load_previous_payload,
                         normalize_period, parse_number, reuse_previous_data, source_url,
                         write_data_js)
-from indicators import Panel, Series
+from indicators import Panel, Ref, Series
 
 
 class NormalizePeriodTest(unittest.TestCase):
@@ -128,6 +128,15 @@ class BuildPayloadTest(unittest.TestCase):
                       reference_lines=((2.0, "Mål 2 %"),))
         payload = build_payload([panel], {"x": [("2026-01-01", 2.5)]}, {}, today="2026-10-07")
         self.assertEqual(payload["panels"][0]["referenceLines"], [{"value": 2.0, "label": "Mål 2 %"}])
+
+    def test_reference_is_passed_as_a_pointer_to_its_owner(self):
+        panel = self.make_panel(Series("x", "X", "fred", "X"), Ref("other", "Andet land"))
+        payload = build_payload([panel], {"x": [("2026-01-01", 1.0)]}, {}, today="2026-10-07")
+        self.assertEqual(payload["panels"][0]["series"][1], {"ref": "other", "label": "Andet land"})
+
+    def test_sections_carry_their_region(self):
+        payload = build_payload([], {}, {}, today="2026-10-07")
+        self.assertTrue(all("region" in section for section in payload["sections"]))
 
     def test_observations_before_display_start_are_dropped(self):
         panel = self.make_panel(Series("x", "X", "fred", "X"))
@@ -324,6 +333,12 @@ class ReusePreviousDataTest(unittest.TestCase):
         payload = self.payload_for({"ok": [("2026-09-01", 1.5)]}, {"flaky": "TimeoutError: x"})
         reuse_previous_data(payload, previous, self.TODAY)
         self.assertEqual(payload["panels"][0]["series"][1]["fallbackFrom"], "2026-10-01T06:00:00+00:00")
+
+    def test_references_are_left_alone(self):
+        panel = Panel("p", "us", "Test", "%", "Beskrivelse", (Series("ok", "OK", "fred", "A"), Ref("ok", "Kopi")))
+        payload = build_payload([panel], {"ok": [("2026-09-01", 1.5)]}, {}, today=self.TODAY)
+        self.assertEqual(reuse_previous_data(payload, self.previous_run(), self.TODAY), [])
+        self.assertEqual(payload["panels"][0]["series"][1], {"ref": "ok", "label": "Kopi"})
 
     def test_without_previous_data_the_series_stays_empty(self):
         payload = self.payload_for({"ok": [("2026-09-01", 1.5)]}, {"flaky": "TimeoutError: x"})
