@@ -3,7 +3,9 @@ name: Update data and publish
 
 on:
   schedule:
-    - cron: "0 6 * * *" # 06:00 UTC = 08:00 Danish summer time, 07:00 winter time
+    # 06:17 UTC (08:17 Danish summer time): not on the hour, when GitHub often skips
+    # scheduled runs because so many workflows start then.
+    - cron: "17 6 * * *"
   workflow_dispatch: # adds a "Run workflow" button under the Actions tab
   push:
     branches: [main] # publish code changes right away
