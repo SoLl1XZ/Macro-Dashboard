@@ -150,13 +150,18 @@ h1 {
   max-width: var(--content-width);
   margin: 0 auto;
   padding: 0 16px;
+}
+
+.tab-list {
   display: flex;
   gap: 4px;
-  overflow-x: auto; /* the tabs scroll sideways on narrow screens, never the page */
-  scrollbar-width: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .tab {
+  display: block;
   padding: 10px 12px;
   border-bottom: 2px solid transparent;
   color: var(--text-secondary);
@@ -167,9 +172,125 @@ h1 {
 
 .tab:hover { color: var(--text-primary); }
 
-.tab[aria-current="page"] {
+/* The region of the chosen country counts as active too. */
+.tab[aria-current="page"],
+.tab.is-active {
   color: var(--text-primary);
   border-bottom-color: var(--text-primary);
+}
+
+.tab:focus-visible,
+.region-menu a:focus-visible,
+.subtab:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
+.chevron {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 2px 3px 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 150ms ease;
+}
+
+.tab-region { position: relative; }
+.tab-region[data-open="true"] .chevron { transform: translateY(3px) rotate(225deg); }
+
+/* The countries slide down out of the region tab. Hidden menus are also unreachable
+   by Tab (visibility), and the delay keeps them visible while they fade out. */
+.region-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  min-width: 200px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
+}
+
+.tab-region[data-open="true"] .region-menu {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  transition: opacity 160ms ease, transform 160ms ease, visibility 0s;
+}
+
+.region-menu a {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.region-menu a:hover { background: var(--wash); color: var(--text-primary); }
+
+.region-menu a[aria-current="page"] {
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--text-primary);
+}
+
+/* The active region's countries as chips under the tabs: the way in on touch screens. */
+.subtabs {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 8px 16px 10px;
+  display: flex;
+  flex-wrap: wrap; /* every country stays visible; a hidden scrollbar would hide some */
+  gap: 6px;
+}
+
+.subtabs[hidden] { display: none; }
+
+.subtabs.is-entering { animation: slide-down 180ms ease-out; }
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+
+.subtab {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.subtab:hover { background: var(--wash); color: var(--text-primary); }
+
+.subtab[aria-current="page"] {
+  background: var(--text-primary);
+  border-color: transparent;
+  color: var(--page);
+}
+
+/* Without motion the menu and the country row simply appear. */
+@media (prefers-reduced-motion: reduce) {
+  .region-menu,
+  .tab-region[data-open="true"] .region-menu {
+    transform: none;
+    transition: none;
+  }
+  .chevron { transition: none; }
+  .subtabs.is-entering { animation: none; }
 }
 
 /* -------------------------------------------------------------------- cards */
@@ -570,14 +691,33 @@ main {
 .compare-legend-item { display: flex; align-items: center; gap: 8px; }
 .compare-legend-item .swatch { margin-top: 0; }
 
-/* Room for the sticky header when jumping to a card from the Signals tab. */
-.card { scroll-margin-top: 130px; }
+/* Room for the sticky header (158px with a country row, measured) when jumping to a
+   card from the Signals tab. */
+.card { scroll-margin-top: 172px; }
 
 /* ------------------------------------------------------------------- phones */
 
 @media (max-width: 600px) {
   /* A sticky header would take a fifth of a phone screen; let it scroll away. */
   .topbar { position: static; }
+
+  /* Nothing to hover on a phone: the tabs scroll sideways, and the countries are
+     reached through the row of chips, which wraps into thumb-sized buttons. */
+  .tab-list {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .region-menu,
+  .chevron { display: none; }
+
+  .subtab {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 14px;
+    font-size: 14px;
+  }
 
   /* Four columns don't fit: the period moves under the series name instead. */
   .series-table .period { display: none; }

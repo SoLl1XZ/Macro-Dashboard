@@ -959,14 +959,146 @@ function hashFor(sectionId, years, extra = {}) {
   return `#${sectionId}${query ? `?${query}` : ""}`;
 }
 
-function renderTabs(activeId) {
-  const links = allTabs().map(tab => {
-    const link = el("a", "tab", tab.title);
-    link.href = hashFor(tab.id, rangeYears); // switching tab keeps the chosen period
-    if (tab.id === activeId) link.setAttribute("aria-current", "page");
-    return link;
+// Top-level sections in menu order, each with its countries (none for Global). Data files
+// from before the regions have no region field, so every section is then top-level.
+function sectionTree() {
+  return DATA.sections
+    .filter(section => !section.region)
+    .map(section => ({ section, countries: DATA.sections.filter(child => child.region === section.id) }));
+}
+
+function tabItem(tab, activeId) {
+  const item = el("li");
+  const link = el("a", "tab", tab.title);
+  link.href = hashFor(tab.id, rangeYears); // switching tab keeps the chosen period
+  if (tab.id === activeId) link.setAttribute("aria-current", "page");
+  item.append(link);
+  return item;
+}
+
+function setRegionOpen(item, open) {
+  item.dataset.open = String(open);
+  item.querySelector(".tab").setAttribute("aria-expanded", String(open));
+  // inert at once, so Tab skips a closed menu even while it is still fading out.
+  item.querySelector(".region-menu").inert = !open;
+}
+
+// A region tab: a click opens the overview; hovering (mouse) or focusing (keyboard) slides
+// out its countries. Touch has no hover, so it relies on the country row instead.
+function regionItem(region, countries, activeId) {
+  const item = el("li", "tab-region");
+  const link = el("a", "tab", region.title);
+  link.href = hashFor(region.id, rangeYears);
+  link.setAttribute("aria-controls", `menu-${region.id}`);
+  const chevron = el("span", "chevron");
+  chevron.setAttribute("aria-hidden", "true");
+  link.append(chevron);
+  if (region.id === activeId) link.setAttribute("aria-current", "page");
+  if (countries.some(country => country.id === activeId)) link.classList.add("is-active");
+
+  const menu = el("ul", "region-menu");
+  menu.id = `menu-${region.id}`;
+  for (const country of countries) {
+    const entry = el("li");
+    const countryLink = el("a", "", country.title);
+    countryLink.href = hashFor(country.id, rangeYears);
+    if (country.id === activeId) countryLink.setAttribute("aria-current", "page");
+    entry.append(countryLink);
+    menu.append(entry);
+  }
+  item.append(link, menu);
+  setRegionOpen(item, false);
+
+  let closingWithEscape = false; // moving focus back to the tab must not reopen the menu
+  item.addEventListener("pointerenter", event => {
+    if (event.pointerType === "mouse") setRegionOpen(item, true);
   });
-  document.getElementById("tabs").replaceChildren(...links);
+  item.addEventListener("pointerleave", event => {
+    if (event.pointerType === "mouse" && !item.contains(document.activeElement)) setRegionOpen(item, false);
+  });
+  item.addEventListener("focusin", () => {
+    if (!closingWithEscape) setRegionOpen(item, true);
+  });
+  item.addEventListener("focusout", event => {
+    if (!item.contains(event.relatedTarget)) setRegionOpen(item, false);
+  });
+  item.addEventListener("keydown", event => {
+    if (event.key !== "Escape" || item.dataset.open !== "true") return;
+    closingWithEscape = true;
+    link.focus();
+    closingWithEscape = false;
+    setRegionOpen(item, false);
+  });
+  return item;
+}
+
+let shownRegionId = null; // the region whose country row is on screen
+
+// The countries of the active region as a row under the tabs. It is the way in on touch
+// screens and phones, where nothing can be hovered.
+function renderCountryRow(regionId, activeId) {
+  const row = document.getElementById("subtabs");
+  const region = sectionTree().find(node => node.section.id === regionId && node.countries.length);
+  if (!region) {
+    row.hidden = true;
+    row.replaceChildren();
+    shownRegionId = null;
+    return;
+  }
+  const entries = [{ id: region.section.id, title: "Oversigt" }, ...region.countries];
+  row.replaceChildren(...entries.map(section => {
+    const link = el("a", "subtab", section.title);
+    link.href = hashFor(section.id, rangeYears);
+    if (section.id === activeId) link.setAttribute("aria-current", "page");
+    return link;
+  }));
+  row.setAttribute("aria-label", `Lande i ${region.section.title}`);
+  row.hidden = false;
+  if (regionId !== shownRegionId) { // slide in when the region changes, not on every country
+    row.classList.remove("is-entering");
+    void row.offsetWidth; // restart the animation
+    row.classList.add("is-entering");
+  }
+  shownRegionId = regionId;
+}
+
+// The tabs are rebuilt on every navigation, which would drop a keyboard user's focus.
+// Remember which link had it, so the same link in the new tabs can take it back.
+function focusedNavLink() {
+  const focused = document.activeElement;
+  if (!focused?.closest("#tabs, #subtabs") || !focused.matches(":focus-visible")) return null;
+  return { href: focused.getAttribute("href"), isTab: focused.classList.contains("tab") };
+}
+
+function restoreNavFocus(remembered) {
+  if (!remembered) return;
+  // A country chosen in a region's menu continues in the country row, which stays visible.
+  const container = remembered.isTab ? "#tabs .tab" : "#subtabs a";
+  document.querySelector(`${container}[href="${CSS.escape(remembered.href)}"]`)?.focus();
+}
+
+function renderTabs(activeId) {
+  const remembered = focusedNavLink();
+  const active = DATA.sections.find(section => section.id === activeId);
+  const list = el("ul", "tab-list");
+  list.append(tabItem(SIGNALS_TAB, activeId));
+  for (const { section, countries } of sectionTree()) {
+    list.append(countries.length ? regionItem(section, countries, activeId) : tabItem(section, activeId));
+  }
+  list.append(tabItem(COMPARE_TAB, activeId));
+  document.getElementById("tabs").replaceChildren(list);
+  scrollToActiveTab(list);
+  renderCountryRow(active?.region ?? activeId, activeId);
+  restoreNavFocus(remembered);
+}
+
+// On a phone the tabs scroll sideways; centre the active one so it is always in view.
+function scrollToActiveTab(list) {
+  const activeTab = list.querySelector('.tab[aria-current="page"], .tab.is-active');
+  if (!activeTab) return;
+  const tabBox = activeTab.getBoundingClientRect();
+  const listBox = list.getBoundingClientRect();
+  list.scrollLeft += tabBox.left - listBox.left - (listBox.width - tabBox.width) / 2;
 }
 
 function renderSection(sectionId) {
@@ -1040,6 +1172,11 @@ function init() {
     });
   }
   renderUpdated();
+  // Escape also closes a menu opened by hovering, where the focus is elsewhere.
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    for (const item of document.querySelectorAll('.tab-region[data-open="true"]')) setRegionOpen(item, false);
+  });
   window.addEventListener("hashchange", route);
   // Chart colours are read from CSS when a chart is created, so redraw if the theme flips.
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", route);
