@@ -5,11 +5,18 @@ Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, so
 
 ## Faner, regioner og lande
 
-- Topniveau: **Signaler** · Global · Råvarer · Nordamerika · Europa · Asien · **Sammenlign**.
+- Topniveau: **Signaler** · Global · Aktier · Råvarer · Nordamerika · Europa · Asien · **Sammenlign**.
   - Signaler viser kalender, ugens største bevægelser og z-score-heatmap.
   - Global har dollarindeks, VIX, styringsrenter og verdens-BNP og -inflation.
   - Råvarer (`commodities`) har grupperne Indeks, Energi, Industrimetaller, Ædelmetaller, Landbrug og Analyse
     (alle `change="pct"`). Olie, gas, kobber og hvede er flyttet hertil med uændrede keys.
+  - Aktier (`equities`) har kun månedsgennemsnit, så hele fanen opdateres samtidig, ca. en uge efter
+    månedens udgang (Eriks valg 2026-10-08; en test låser det). Grupperne:
+    - Regioner: OECD's brede indeks (2015 = 100) pr. region via `SHARE_PRICE_REGIONS`.
+    - Kendte indeks: S&P 500, Euro Stoxx 50 og Nikkei 225 fra ECB. De daglige FRED-versioner på USA- og
+      Japan-fanerne er flyttet hertil som månedlige med de gamle keys (`sp500`, `nikkei`).
+    - Fald fra toppen (`drawdown`) med en linje ved −20 % (bjørnemarked).
+    - Thailand, Vietnam og Malaysia mangler (ingen gratis kilde).
   - Sammenlign: vælg lande (højst 8, chips pr. region, hurtigvalg) og parametre (kernetitlerne).
     Én graf pr. parameter med fast farve pr. land, plus en tabel farvet efter 10-års-percentil.
     Den gamle sammenligning af to vilkårlige serier findes som "Avanceret" (`a=`/`b=`).
@@ -20,7 +27,7 @@ Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, so
 - Kun disse 16 lande må være på dashboardet.
 - Strukturen er datadrevet: `SECTIONS` i `indicators.py` er `Section(id, title, region)` i menurækkefølge (låst af tests).
   - `app.js` bygger menuen og sætter Signaler først og Sammenlign sidst.
-  - En ny topniveau-fane (fx "Aktieindekser") er én `Section(...)` uden region først i listen.
+  - En ny topniveau-fane er én `Section(...)` uden region i listen (Aktier står mellem Global og Råvarer).
 - **Gamle id'er bevares** (`us`, `europe`, `denmark`, `asia`, `china`, `japan`, `korea`), så gamle links som `#europe?range=10` virker.
 - **Kernepaneler:**
   - Hver landefane starter med gruppen `CORE_GROUP` ("Kernetal") med titlerne i `CORE_TITLES`, i fast rækkefølge.
@@ -36,7 +43,8 @@ Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, so
   - `comparable="<key>"`: den serie, Sammenlign bruger, når det ikke er den første. Danmark viser fx
     bruttoledighed og KPI først, men sammenlignes med harmoniseret ledighed og HICP.
 - **`INPUT_SERIES`** hentes kun som input til beregninger (fx US CPI-niveau til real oliepris) og vises ikke.
-- **Derived-beregninger:** `spread` (a − b), `ratio` (a / b) og `real` (a i seneste måneds priser via indeks b).
+- **Derived-beregninger:** `spread` (a − b), `ratio` (a / b), `real` (a i seneste måneds priser via indeks b)
+  og med ét input `drawdown` (% under den hidtil højeste værdi siden `FETCH_START`).
 
 ## URL'en (eneste kilde til tilstand)
 
@@ -89,7 +97,7 @@ GitHub Actions kører begge.
 | `indicators.py` | Sektioner og regioner, katalog over alle serier (kilde, id, sektion, gruppe, enhed, beregning, referencelinjer, refs), kernetitler, CEPR-recessioner |
 | `events.py` | ECB- og Fed-mødedatoer (manuel liste med kilder) og kalenderlogik |
 | `fetch_data.py` | Henter serier fra hver kilde, recessioner (USREC) og Eurostats udgivelseskalender; skriver `data/data.js` |
-| `transforms.py` | Beregninger: år-over-år, spreads, ændringer, percentil, z-score, ugebevægelse, recessionsperioder |
+| `transforms.py` | Beregninger: år-over-år, spreads, fald fra toppen, ændringer, percentil, z-score, ugebevægelse, recessionsperioder |
 | `lib.js` | Ren logik uden DOM (URL-tilstand, Sammenlign-valg, søgematch); indlæses før `app.js` og testes med Node |
 | `index.html`, `style.css`, `app.js`, `favicon.svg` | Selve dashboardet (Chart.js + zoom-plugin fra CDN med SRI) |
 | `data/data.js` | Genereret data: `window.MACRO_DATA = {...}`. Committes kun af GitHub Actions-botten |
@@ -100,7 +108,8 @@ GitHub Actions kører begge.
 - FRED (St. Louis Fed) – CSV-endpoint uden API-nøgle: `fred.stlouisfed.org/graph/fredgraph.csv?id=<SERIE>`.
   Rummer også OECD- og IMF-serier, fx ledighed (`LRHUTTTT..M156S`), eksport (`XTEXVA01..M664S`),
   real BNP (`NGDPRSAXDC..Q`) og 3-mdr. renter (`IR3TIB01..M156N`) for Japan og Korea.
-- ECB Data Portal – `data-api.ecb.europa.eu`
+- ECB Data Portal – `data-api.ecb.europa.eu`, inkl. månedlige aktieindeks (`FM/M.<land>.<valuta>.DS.EI.<indeks>.HSTA`).
+  `HSTA` er månedsgennemsnittet af daglige lukkekurser (krydstjekket mod FRED's daglige S&P 500: samme tal).
 - Eurostat – `ec.europa.eu/eurostat/api`
 - BIS – `stats.bis.org/api/v2`:
   - styringsrenter (`WS_CBPOL`, forespørgsel `"D.JP"`)
@@ -111,7 +120,7 @@ GitHub Actions kører begge.
   - SDMX CPI (`imf_cpi`)
   - kvartalsvist nationalregnskab (`imf_qnea`, real-BNP i niveau → `"yoy"`; kun Malaysia, se faldgruber)
 - OECD (`oecd`, forespørgsel `"DATAFLOW/MÅLING/LAND"`; skabeloner i `OECD_DATAFLOWS`):
-  - `FINMARK`: renter `IRLT` / `IR3TIB`
+  - `FINMARK`: renter `IRLT` / `IR3TIB` (enhed `PA`) og aktieindeks `SHARE` (enhed `IX`, se `FINMARK_UNITS`)
   - `CLI`: tillid `CCICP` / `BCICP`
   - `PRICES`: kerne-CPI `_TXCP01_NRG`
   - `QNA`: BNP-vækst år/år `GY` for Kina og Indien
@@ -150,10 +159,15 @@ GitHub Actions kører begge.
 - **DOM:** `append()` returnerer `undefined`. Kæd aldrig `x.append(...).append(...)`; brug en variabel eller `appendChild()`.
 - **MoF-filerne:** to filer (historik til forrige måned + indeværende måned), datoer som `2026/10/1`, `-` = ingen
   rente den dag, og den aktuelle fil slutter med en note i japansk tegnsæt (ikke UTF-8) – derfor `http_get(..., errors="replace")`.
-- **Aktiekilder (testet 2026-10-08, aktiefanen udskudt):** Yahoo svarer `429` på vores User-Agent; Stooq kræver en
-  JavaScript proof-of-work bot-udfordring – den omgås ikke; Euronext og Nasdaq Nordic afviser. Officielle muligheder:
-  FRED (`SP500`, `NASDAQCOM`, `DJIA`, `NIKKEI225`), ECB (`FM/M.U2.EUR.DS.EI.DJES50I.HSTA` = Euro Stoxx 50, månedsgennemsnit)
-  og OECD `DF_FINMARK` måling `SHARE` (brede nationale aktieindeks, månedligt – ikke DAX/CAC/OMXC25).
+- **Aktiekilder (testet 2026-10-08):**
+  - Fravalgt: Yahoo svarer `429` på vores User-Agent. Stooq kræver en JavaScript proof-of-work bot-udfordring, som
+    ikke omgås. Euronext og Nasdaq Nordic afviser. MSCI's end-of-day-endpoint svarer, men vilkårene forbyder
+    automatisk udtræk og videregivelse.
+  - Daglige tal uden nøgle findes kun på FRED (`SP500` og `DJIA` kun 10 år, `NASDAQCOM`, `NIKKEI225`). De bruges ikke,
+    fordi Aktier skal opdateres samtidig.
+  - OECD's `SHARE`: euroområdet er præcis Euro Stoxx, og Danmark er OMXC (alle aktier); begge krydstjekket.
+    USA og Japan er bredere indeks end S&P 500 og Nikkei (de vokser langsommere), men OECD nævner ikke hvilke.
+  - Danmarks Statistik `MPK13` har OMXC25 og sektorer, men en måned senere end OECD og ECB.
 - **OECD:**
   - API'et svarede `403` under test 2026-10-08, sandsynligvis en hastighedsgrænse. Saml derfor lande med `+` i én forespørgsel pr. dataflow og måling (ca. 5 kald pr. kørsel).
   - En fejlet forespørgsel fælder kun sine egne serier (`PartialBatch`).
@@ -189,6 +203,8 @@ GitHub Actions kører begge.
   (`retry_not_found`).
 - **Y-aksen:** `maxTicksLimit: 8`. Med færre springer Chart.js til et groft trin, og akser bliver halvtomme
   (JGB: −2 til 6 for data mellem −0,13 og 4,17). Mål på alle grafer efter ændringer: data skal fylde mindst 60 % af aksen.
+  Bevidst undtagelse: en referencelinje er altid med på aksen (`suggestedMin`/`suggestedMax`), så fx "Fald fra toppen i
+  Nordamerika" ved 1 år går ned til −20 % for data mellem −4 og 0.
 - **Panel-anker ved genindlæsning:** med `panel=` i URL'en sættes `history.scrollRestoration = "manual"`, ellers lægger
   browseren sin gamle scrollposition oven på scroll til panelet.
 - **Smalle telefoner (320 px):** ændringer kan brydes mellem tal og enhed; "%‑point" har en ikke-brydende bindestreg (U+2011).
