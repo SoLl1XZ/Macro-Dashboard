@@ -1,4 +1,5 @@
 import contextlib
+import http.client
 import io
 import json
 import tempfile
@@ -184,6 +185,20 @@ class HttpRetryTest(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError):
                 fetch_data.fetch_fred("NOSUCHSERIES")
         self.assertEqual(urlopen.call_count, 2)
+
+    def test_a_dropped_connection_is_tried_again(self):
+        # Statistics Denmark closed the connection without an answer once (2026-10-08).
+        dropped = http.client.RemoteDisconnected("Remote end closed connection without response")
+        with mock.patch.object(fetch_data.urllib.request, "urlopen", side_effect=[dropped, self.ok()]), \
+                mock.patch.object(fetch_data.time, "sleep"):
+            self.assertEqual(fetch_data.http_get("https://example.org/data"), self.CSV.decode())
+
+    def test_a_cut_off_answer_is_tried_again(self):
+        cut_off = mock.MagicMock()
+        cut_off.__enter__.return_value.read.side_effect = http.client.IncompleteRead(b"observation_da")
+        with mock.patch.object(fetch_data.urllib.request, "urlopen", side_effect=[cut_off, self.ok()]), \
+                mock.patch.object(fetch_data.time, "sleep"):
+            self.assertEqual(fetch_data.http_get("https://example.org/data"), self.CSV.decode())
 
     def test_other_sources_give_up_on_a_404_at_once(self):
         # For them a 404 means a wrong query, which no retry can fix.

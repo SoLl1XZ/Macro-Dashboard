@@ -1,6 +1,7 @@
 """Fetch every series in the indicator catalog from its public API."""
 
 import csv
+import http.client
 import io
 import json
 import math
@@ -74,7 +75,9 @@ def http_get_bytes(url: str, accept: str | None = None, attempts: int = 3,
             second_chance = retry_not_found and error.code == 404 and attempt == 1
             if not (temporary or second_chance) or attempt == attempts:
                 raise
-        except (urllib.error.URLError, TimeoutError):
+        # Network trouble is usually brief: no answer, a dropped connection (RemoteDisconnected,
+        # a ConnectionError) or an answer cut off halfway (IncompleteRead, an HTTPException).
+        except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException):
             if attempt == attempts:
                 raise
         time.sleep(2 ** attempt)
