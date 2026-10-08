@@ -62,6 +62,37 @@ function periodLabel(series) {
   return formatPeriod(lastDate, series.frequency) + (isForecast ? " (prognose)" : "");
 }
 
+// ---------------------------------------------------------------------- references
+
+// A reference ({ref, label}) shows a series that another panel owns, e.g. a country's
+// inflation in a regional overview. The owner's data is filled in once here, so charts,
+// tables and CSV work unchanged; isReference keeps the copy out of Signals and Compare.
+function resolveReferences() {
+  const owned = new Map();
+  for (const panel of DATA.panels) {
+    for (const series of panel.series) if (!series.ref) owned.set(series.key, series);
+  }
+  for (const panel of DATA.panels) {
+    panel.series = panel.series.map(series => {
+      if (!series.ref) return series;
+      const owner = owned.get(series.ref);
+      if (owner) return { ...owner, label: series.label, isReference: true };
+      // Only a broken catalog gets here (a test guards against it): show it as missing data.
+      return {
+        key: series.ref, label: series.label, source: "", sourceUrl: null, frequency: null,
+        forecastFrom: null, error: "Ukendt serie", stale: false, fallbackFrom: null,
+        summary: null, data: [], isReference: true,
+      };
+    });
+  }
+}
+
+// Signals only count a panel where its headline series is owned, so a series shown in
+// a country tab and in its region's overview appears once.
+function ownsHeadline(panel) {
+  return !panel.series[0].isReference;
+}
+
 // --------------------------------------------------------------------- DOM helpers
 
 // Text always goes in through textContent: labels come from external APIs.
@@ -619,7 +650,7 @@ function goToPanel(panel) {
 
 function renderMovers() {
   const movers = DATA.panels
-    .filter(panel => typeof panel.series[0].summary?.weekMoveZ === "number")
+    .filter(panel => ownsHeadline(panel) && typeof panel.series[0].summary?.weekMoveZ === "number")
     .sort((a, b) => Math.abs(b.series[0].summary.weekMoveZ) - Math.abs(a.series[0].summary.weekMoveZ))
     .slice(0, MOVERS_SHOWN);
   const list = el("ol", "movers");
@@ -662,7 +693,8 @@ function renderHeatmap() {
   for (const section of DATA.sections) {
     const block = el("section", "heat-section");
     const grid = el("div", "heat-grid");
-    grid.append(...DATA.panels.filter(panel => panel.section === section.id).map(renderHeatTile));
+    grid.append(...DATA.panels.filter(panel => panel.section === section.id && ownsHeadline(panel))
+      .map(renderHeatTile));
     block.append(el("h3", "heat-section-title", section.title), grid);
     heatmap.append(block);
   }
@@ -744,7 +776,8 @@ function seriesLookup() {
   const lookup = new Map();
   for (const panel of DATA.panels) {
     for (const series of panel.series) {
-      if (series.data.length > 0) lookup.set(series.key, { panel, series });
+      // A reference is listed where it is owned, so no series appears twice.
+      if (series.data.length > 0 && !series.isReference) lookup.set(series.key, { panel, series });
     }
   }
   return lookup;
@@ -993,6 +1026,7 @@ function init() {
     document.getElementById("load-error").hidden = false;
     return;
   }
+  resolveReferences();
   if (typeof Chart !== "undefined") {
     Chart.Interaction.modes.nearestPerSeries = nearestPerSeries;
     // Registration order is drawing order: recession bands go behind the reference lines.
