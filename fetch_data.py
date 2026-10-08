@@ -583,7 +583,8 @@ def series_payload(s: Series, panel: Panel, processed: dict[str, list[Observatio
         # In IMF's World Economic Outlook the current year is already a projection.
         "forecastFrom": f"{today[:4]}-01-01" if s.source == "imf_weo" else None,
         "error": errors.get(s.key),
-        "stale": summary is not None and is_stale(summary["lastDate"], frequency, today),
+        "stale": summary is not None and is_stale(summary["lastDate"], frequency, today, s.max_age_days),
+        "maxAgeDays": s.max_age_days,  # kept, so reuse_previous_data can judge old data the same way
         "fallbackFrom": None,  # set by reuse_previous_data when this run's fetch failed
         "summary": rounded_summary(summary),
         "data": [[d, rounded(v)] for d, v in thin_before(obs, thinning_cutoff)],
@@ -683,7 +684,7 @@ def reuse_previous_data(payload: dict, previous: dict | None, today: str) -> lis
                 "data": old["data"],
                 "summary": old["summary"],
                 "frequency": old["frequency"],
-                "stale": is_stale(old["summary"]["lastDate"], old["frequency"], today),
+                "stale": is_stale(old["summary"]["lastDate"], old["frequency"], today, series.get("maxAgeDays")),
                 # If the previous run was itself a fallback, keep the original fetch time.
                 "fallbackFrom": old.get("fallbackFrom") or previous["generatedAt"],
             }

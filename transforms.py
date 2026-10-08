@@ -236,11 +236,14 @@ def peak_trough_periods(peaks_and_troughs: list[tuple[str, str]]) -> list[tuple[
 MAX_AGE_DAYS = {"D": 10, "W": 21, "M": 120, "Q": 220, "A": 550}
 
 
-def is_stale(last_date: str, frequency: str | None, today: str) -> bool:
-    if frequency is None:
-        return False
+def is_stale(last_date: str, frequency: str | None, today: str, max_age_days: int | None = None) -> bool:
+    """max_age_days replaces the limit for the frequency, for a source that is always slower."""
+    if max_age_days is None:
+        if frequency is None:
+            return False
+        max_age_days = MAX_AGE_DAYS[frequency]
     age_days = (date.fromisoformat(today) - date.fromisoformat(last_date)).days
-    return age_days > MAX_AGE_DAYS[frequency]
+    return age_days > max_age_days
 
 
 def iso_week(iso_date: str) -> tuple[int, int]:

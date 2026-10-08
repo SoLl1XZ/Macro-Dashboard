@@ -141,6 +141,16 @@ class BuildPayloadTest(unittest.TestCase):
         payload = build_payload([panel], {"x": [("2026-01-01", 2.5)]}, {}, today="2026-10-07")
         self.assertEqual(payload["panels"][0]["referenceLines"], [{"value": 2.0, "label": "Mål 2 %"}])
 
+    def test_a_series_own_delay_decides_if_it_is_stale(self):
+        quarterly = [("2025-01-01", 1.0), ("2025-04-01", 1.0), ("2025-07-01", 1.0), ("2025-10-01", 1.0),
+                     ("2026-01-01", 1.0)]
+        usual = Series("usual", "Usual", "bis", "Q")
+        slow = Series("slow", "Slow", "bis", "Q", max_age_days=365)
+        payload = build_payload([self.make_panel(usual, slow)], {"usual": quarterly, "slow": quarterly}, {},
+                                today="2026-10-07")
+        stale = [series["stale"] for series in payload["panels"][0]["series"]]
+        self.assertEqual(stale, [True, False])
+
     def test_reference_is_passed_as_a_pointer_to_its_owner(self):
         panel = self.make_panel(Series("x", "X", "fred", "X"), Ref("other", "Andet land"))
         payload = build_payload([panel], {"x": [("2026-01-01", 1.0)]}, {}, today="2026-10-07")
@@ -432,6 +442,16 @@ class ReusePreviousDataTest(unittest.TestCase):
         payload = self.payload_for({"ok": [("2026-09-01", 1.5)]}, {"flaky": "TimeoutError: x"})
         reuse_previous_data(payload, previous, self.TODAY)
         self.assertEqual(payload["panels"][0]["series"][1]["fallbackFrom"], "2026-10-01T06:00:00+00:00")
+
+    def test_previous_data_keeps_the_series_own_delay(self):
+        panel = Panel("p", "us", "Test", "%", "Beskrivelse",
+                      (Series("slow", "Slow", "bis", "Q", max_age_days=365),))
+        quarterly = [("2025-10-01", 1.0), ("2026-01-01", 1.0)]
+        previous = build_payload([panel], {"slow": quarterly}, {}, today=self.TODAY)
+        previous["generatedAt"] = "2026-10-06T06:00:00+00:00"
+        payload = build_payload([panel], {}, {"slow": "TimeoutError: x"}, today=self.TODAY)
+        reuse_previous_data(payload, previous, self.TODAY)
+        self.assertFalse(payload["panels"][0]["series"][0]["stale"])
 
     def test_references_are_left_alone(self):
         panel = Panel("p", "us", "Test", "%", "Beskrivelse", (Series("ok", "OK", "fred", "A"), Ref("ok", "Kopi")))

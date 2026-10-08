@@ -81,6 +81,9 @@ class Series:
     # "diff" = change vs. previous observation. Derived series: "spread" = a - b in
     # %-points, "ratio" = a / b, "real" = a in the prices of b's latest month.
     transform: str | None = None
+    # Days the latest value may be old before the page calls it stale, for a source that is
+    # always slower than its frequency's usual limit (see MAX_AGE_DAYS in transforms.py).
+    max_age_days: int | None = None
 
 
 @dataclass(frozen=True)
@@ -133,8 +136,9 @@ INFLATION_TARGET_FED = ((2.0, "Fed-mål 2 %"),)
 INFLATION_TARGET_ECB = ((2.0, "ECB-mål 2 %"),)
 
 
-def S(key: str, label: str, source: str, query, transform: str | None = None) -> Series:
-    return Series(key, label, source, query, transform)
+def S(key: str, label: str, source: str, query, transform: str | None = None,
+      max_age_days: int | None = None) -> Series:
+    return Series(key, label, source, query, transform, max_age_days)
 
 
 def R(key: str, label: str) -> Ref:
@@ -1032,7 +1036,9 @@ PANELS: list[Panel] = [
           group=extras_group("Sydkorea")),
     Panel("kr_household_debt", "korea", "Husholdningsgæld", "% af BNP",
           "Husholdningernes samlede gæld (BIS, kvartalsvis). Nr. 9 af 48 lande i BIS' data (1. kvt. 2026).",
-          (S("kr_hh_debt", "Husholdninger", "bis", "WS_TC/Q.KR.H.A.M.770.A"),),
+          # BIS publishes a quarter about two quarters later (Q1 in September, Q2 in December),
+          # so Q1 is still the latest in early December, close to a year after it began.
+          (S("kr_hh_debt", "Husholdninger", "bis", "WS_TC/Q.KR.H.A.M.770.A", max_age_days=365),),
           group=extras_group("Sydkorea")),
     Panel("kr_us_spread", "korea", "Rentespænd til USA", "%-point",
           "Koreansk minus amerikansk 10-årig statsrente (månedlige gennemsnit). Spændet påvirker "
@@ -1113,7 +1119,9 @@ PANELS: list[Panel] = [
     # 2026-10-08); for Thailand and China they did not, so those are left out.
     Panel("my_gdp_q", "malaysia", "BNP-vækst (kvartal)", "% år/år",
           "Real BNP sammenlignet med samme kvartal året før (IMF's kvartalsvise nationalregnskab).",
-          (S("my_gdp_q", "Real BNP", "imf_qnea", "MYS", "yoy"),),
+          # IMF's quarterly accounts follow Malaysia's own release by months (Q1 was still the
+          # latest in October 2026).
+          (S("my_gdp_q", "Real BNP", "imf_qnea", "MYS", "yoy", max_age_days=365),),
           group=CORE_GROUP),
     imf_gdp_panel("malaysia", "my_gdp", "MYS"),
     Panel("usdmyr", "malaysia", "Valuta", "MYR pr. USD",

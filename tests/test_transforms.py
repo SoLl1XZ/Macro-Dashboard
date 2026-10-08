@@ -204,6 +204,12 @@ class IsStaleTest(unittest.TestCase):
     def test_unknown_frequency_is_never_stale(self):
         self.assertFalse(is_stale("2000-01-01", None, today="2026-10-07"))
 
+    def test_a_series_can_allow_a_longer_delay(self):
+        # BIS total credit: the first quarter arrives in September, the second in December.
+        self.assertTrue(is_stale("2026-01-01", "Q", today="2026-10-07"))  # 279 days > 220
+        self.assertFalse(is_stale("2026-01-01", "Q", today="2026-10-07", max_age_days=365))
+        self.assertTrue(is_stale("2025-07-01", "Q", today="2026-10-07", max_age_days=365))
+
 
 class ThinBeforeTest(unittest.TestCase):
     def test_keeps_last_day_per_week_before_cutoff_and_all_days_after(self):
