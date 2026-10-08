@@ -8,10 +8,12 @@ Query format per source:
     fred      FRED series id                       "DGS10"
     ecb       ECB flow/key                         "FM/D.U2.EUR.4F.KR.DFR.LEV"
     eurostat  dataset?filters                      "prc_hicp_minr?geo=EA&coicop18=TOTAL&unit=RCH_A"
-    bis       WS_CBPOL key (policy rates)          "D.US"
+    bis       WS_CBPOL key (policy rates), or      "D.US"
+              dataflow/key                         "WS_XRU/D.ID.IDR.A"
     imf_weo   IMF DataMapper indicator/country     "NGDP_RPCH/WEOWORLD"
     imf_cpi   IMF CPI year-over-year, country      "JPN"
-    oecd_lt   OECD 10-year government bond yield   "DEU"
+    imf_qnea  IMF quarterly real GDP, country      "MYS"
+    oecd      OECD dataflow/measure/country        "FINMARK/IRLT/DEU" (see OECD_DATAFLOWS)
     statbank  Statistics Denmark table?filters     "AUS08?OMRÅDE=000&SAESONFAK=9"
     derived   computed from other series           ("it_10y", "de_10y")
 """
@@ -193,15 +195,15 @@ PANELS: list[Panel] = [
           group="Renter og spreads"),
     Panel("eu_10y", "europe", "10-årige statsrenter: Tyskland og Frankrig", "%",
           "Månedlige gennemsnit for eurozonens to største økonomier.",
-          (S("de_10y", "Tyskland", "oecd_lt", "DEU"),
-           S("fr_10y", "Frankrig", "oecd_lt", "FRA")),
+          (S("de_10y", "Tyskland", "oecd", "FINMARK/IRLT/DEU"),
+           S("fr_10y", "Frankrig", "oecd", "FINMARK/IRLT/FRA")),
           group="Renter og spreads"),
     Panel("eu_10y_south", "europe", "10-årige statsrenter: Sydeuropa", "%",
           "Månedlige gennemsnit for de lande, der var i centrum af gældskrisen i 2010–2012.",
-          (S("it_10y", "Italien", "oecd_lt", "ITA"),
-           S("es_10y", "Spanien", "oecd_lt", "ESP"),
-           S("gr_10y", "Grækenland", "oecd_lt", "GRC"),
-           S("pt_10y", "Portugal", "oecd_lt", "PRT")),
+          (S("it_10y", "Italien", "oecd", "FINMARK/IRLT/ITA"),
+           S("es_10y", "Spanien", "oecd", "FINMARK/IRLT/ESP"),
+           S("gr_10y", "Grækenland", "oecd", "FINMARK/IRLT/GRC"),
+           S("pt_10y", "Portugal", "oecd", "FINMARK/IRLT/PRT")),
           group="Renter og spreads"),
     Panel("eu_spreads", "europe", "Statsrente-spreads til Tyskland", "%-point",
           "Merrente over tyske statsobligationer. Måler uro om gæld i eurozonen.",
@@ -314,7 +316,7 @@ PANELS: list[Panel] = [
     Panel("uk", "europe", "UK: renter og inflation", "%",
           "Bank of Englands styringsrente, 10-årig statsrente og britisk CPI-inflation.",
           (S("uk_bank_rate", "BoE-rente", "bis", "D.GB"),
-           S("gb_10y", "10-årig statsrente", "oecd_lt", "GBR"),
+           S("gb_10y", "10-årig statsrente", "oecd", "FINMARK/IRLT/GBR"),
            S("uk_cpi", "CPI (% år/år)", "imf_cpi", "GBR")),
           group="Storbritannien"),
 
@@ -334,7 +336,7 @@ PANELS: list[Panel] = [
           reference_lines=((7.46038, "Centralkurs 7,46038"),)),
     Panel("dk_10y", "denmark", "10-årig statsrente", "%",
           "Dansk 10-årig statsrente sammenlignet med Tyskland.",
-          (S("dk_10y", "Danmark", "oecd_lt", "DNK"),
+          (S("dk_10y", "Danmark", "oecd", "FINMARK/IRLT/DNK"),
            S("dk_de_10y", "Spænd til Tyskland", "derived", ("dk_10y", "de_10y"), "spread"))),
     Panel("dk_mortgage", "denmark", "Realkreditrente (nye lån)", "%",
           "Gennemsnitlig rente inkl. bidrag på nye realkreditlån til husholdninger.",
@@ -380,7 +382,7 @@ PANELS: list[Panel] = [
            S("vn_gdp", "Vietnam", "imf_weo", "NGDP_RPCH/VNM"))),
     Panel("asia_10y", "asia", "10-årig statsrente: Indien", "%",
           "Månedligt gennemsnit. OECD har ikke tal for Indonesien, Thailand eller Vietnam.",
-          (S("in_10y", "Indien", "oecd_lt", "IND"),)),
+          (S("in_10y", "Indien", "oecd", "FINMARK/IRLT/IND"),)),
     Panel("asia_fx", "asia", "USD/INR og USD/THB", "Lokal valuta pr. USD",
           "Indiske rupees og thailandske baht over for dollar. Rupiah og dong findes ikke hos FRED.",
           (S("usdinr", "USD/INR", "fred", "DEXINUS"),
@@ -392,7 +394,7 @@ PANELS: list[Panel] = [
           (S("cn_lpr", "LPR 1 år", "bis", "D.CN"),)),
     Panel("cn_10y", "china", "10-årig statsrente", "%",
           "Kinesisk 10-årig statsrente sammenlignet med USA.",
-          (S("cn_10y", "Kina", "oecd_lt", "CHN"),
+          (S("cn_10y", "Kina", "oecd", "FINMARK/IRLT/CHN"),
            S("us_10y_m", "USA", "fred", "GS10"))),
     Panel("cn_inflation", "china", "Inflation", "% år/år",
           "Forbrugerprisinflation. Lav/negativ inflation har været et tegn på svag efterspørgsel.",
@@ -468,7 +470,7 @@ PANELS: list[Panel] = [
           group="Renter"),
     Panel("kr_10y", "korea", "10-årig statsrente og spænd til USA", "%",
           "Koreansk 10-årig statsrente (månedligt gennemsnit) og forskellen til den amerikanske.",
-          (S("kr_10y", "Sydkorea", "oecd_lt", "KOR"),
+          (S("kr_10y", "Sydkorea", "oecd", "FINMARK/IRLT/KOR"),
            S("kr_us_10y", "Spænd til USA", "derived", ("kr_10y", "us_10y_m"), "spread")),
           group="Renter"),
     Panel("kr_inflation", "korea", "Inflation", "% år/år",

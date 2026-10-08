@@ -32,7 +32,7 @@ OUTPUT_PATH = Path(__file__).parent / "data" / "data.js"
 DATA_JS_PREFIX = "window.MACRO_DATA = "
 SOURCE_NAMES = {
     "fred": "FRED", "ecb": "ECB", "eurostat": "Eurostat", "bis": "BIS",
-    "imf_weo": "IMF World Economic Outlook", "imf_cpi": "IMF", "oecd_lt": "OECD",
+    "imf_weo": "IMF World Economic Outlook", "imf_cpi": "IMF", "imf_qnea": "IMF", "oecd": "OECD",
     "statbank": "Danmarks Statistik", "mof": "Japans finansministerium", "derived": "Beregnet",
 }
 SDMX_CSV = "application/vnd.sdmx.data+csv;version=1.0.0"
@@ -148,8 +148,10 @@ def fetch_eurostat(query: str) -> list[Observation]:
 
 
 # BIS dataflows and their versions. A query without a dataflow ("D.US") means policy rates;
-# other dataflows are named in front of the key, e.g. "WS_TC/Q.KR.H.A.M.770.A" (total credit).
-BIS_DATAFLOW_VERSIONS = {"WS_CBPOL": "1.0", "WS_TC": "2.0"}
+# other dataflows are named in front of the key, e.g. "WS_TC/Q.KR.H.A.M.770.A" (total credit)
+# or "WS_XRU/D.ID.IDR.A" (rupiah per US dollar, daily average).
+BIS_DATAFLOW_VERSIONS = {"WS_CBPOL": "1.0", "WS_TC": "2.0", "WS_XRU": "1.0"}
+BIS_TOPICS = {"WS_CBPOL": "CBPOL", "WS_TC": "TOTAL_CREDIT", "WS_XRU": "XRU"}  # data.bis.org pages
 
 
 def fetch_bis(query: str) -> list[Observation]:
@@ -196,12 +198,66 @@ def fetch_imf_cpi(countries: list[str]) -> Batch:
     return group_sdmx_rows(http_get(url, accept=SDMX_CSV), "COUNTRY")
 
 
-def fetch_oecd_lt(countries: list[str]) -> Batch:
-    url = ("https://sdmx.oecd.org/public/rest/data/OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0/"
-           f"{'+'.join(countries)}.M.IRLT.PA....."
-           f"?startPeriod={FETCH_START[:7]}&dimensionAtObservation=AllDimensions"
-           "&detail=dataonly&format=csvfile")
-    return group_sdmx_rows(http_get(url), "REF_AREA")
+def fetch_imf_qnea(countries: list[str]) -> Batch:
+    # Real GDP in national currency, not seasonally adjusted: the "yoy" transform turns
+    # it into growth versus the same quarter last year, which needs no seasonal adjustment.
+    url = ("https://api.imf.org/external/sdmx/2.1/data/IMF.STA,QNEA/"
+           f"{'+'.join(countries)}.B1GQ.Q.NSA.XDC.Q"
+           f"?startPeriod={FETCH_START[:4]}&detail=dataonly")
+    return group_sdmx_rows(http_get(url, accept=SDMX_CSV), "COUNTRY")
+
+
+class PartialBatch(Exception):
+    """Raised by a batch fetcher when some of its requests failed and others worked."""
+
+    def __init__(self, batch: Batch, errors: dict[str, str]):
+        super().__init__(f"{len(errors)} queries failed")
+        self.batch = batch
+        self.errors = errors
+
+
+# OECD dataflows as (flow id, series key template). A query is "DATAFLOW/MEASURE/COUNTRY",
+# e.g. "FINMARK/IRLT/DEU" for Germany's 10-year yield; the measure and the countries fill in
+# the template. Keys tested 2026-10-08.
+OECD_DATAFLOWS = {
+    "FINMARK": ("OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0", "{countries}.M.{measure}.PA....."),
+    "CLI": ("OECD.SDD.STES,DSD_STES@DF_CLI,4.1", "{countries}.M.{measure}.IX._Z.AA.IX._Z.H"),
+    "PRICES": ("OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0", "{countries}.M.N.CPI.PA.{measure}.N.GY"),
+    "QNA": ("OECD.SDD.NAD,DSD_NAMAIN1@DF_QNA_EXPENDITURE_GROWTH_G20,1.1",
+            "Q.Y.{countries}.S1.S1.B1GQ._Z._Z._Z.PC.L.{measure}.T0102"),
+}
+
+
+def fetch_oecd(queries: list[str]) -> Batch:
+    """One request per dataflow and measure, covering all its countries at once.
+
+    The OECD rate-limits its API (it answered 403 during testing), so few requests matter.
+    A failed request only fails its own queries: see PartialBatch.
+    """
+    countries_by_measure: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for query in queries:
+        dataflow, measure, country = query.split("/")
+        countries_by_measure[(dataflow, measure)].append(country)
+
+    batch: Batch = {}
+    errors: dict[str, str] = {}
+    for (dataflow, measure), countries in countries_by_measure.items():
+        flow_id, key_template = OECD_DATAFLOWS[dataflow]
+        key = key_template.format(countries="+".join(countries), measure=measure)
+        url = (f"https://sdmx.oecd.org/public/rest/data/{flow_id}/{key}"
+               f"?startPeriod={FETCH_START[:7]}&dimensionAtObservation=AllDimensions"
+               "&detail=dataonly&format=csvfile")
+        queries_here = [f"{dataflow}/{measure}/{country}" for country in countries]
+        try:
+            by_country = group_sdmx_rows(http_get(url), "REF_AREA")
+        except Exception as error:  # the other dataflows may still work
+            errors.update({query: describe(error) for query in queries_here})
+            continue
+        for query, country in zip(queries_here, countries):
+            batch[query] = by_country.get(country, [])
+    if errors:
+        raise PartialBatch(batch, errors)
+    return batch
 
 
 # Japan's Ministry of Finance: the full history up to last month, then the current month.
@@ -253,7 +309,8 @@ SINGLE_FETCHERS: dict[str, Callable[[str], list[Observation]]] = {
 BATCH_FETCHERS: dict[str, Callable[[list[str]], Batch]] = {
     "imf_weo": fetch_imf_weo,
     "imf_cpi": fetch_imf_cpi,
-    "oecd_lt": fetch_oecd_lt,
+    "imf_qnea": fetch_imf_qnea,
+    "oecd": fetch_oecd,
     "mof": fetch_mof_jgb,
 }
 
@@ -272,6 +329,8 @@ def fetch_source(source: str, queries: list[str]) -> tuple[Batch, dict[str, str]
     if source in BATCH_FETCHERS:
         try:
             batch = BATCH_FETCHERS[source](queries)
+        except PartialBatch as partial:
+            batch, errors = partial.batch, dict(partial.errors)
         except Exception as error:
             return {}, {query: describe(error) for query in queries}
     else:
@@ -376,15 +435,18 @@ def source_url(s: Series) -> str | None:
         case "eurostat":
             return f"https://ec.europa.eu/eurostat/databrowser/view/{s.query.split('?')[0]}/default/table"
         case "bis":
-            topic = "TOTAL_CREDIT" if s.query.startswith("WS_TC/") else "CBPOL"
-            return f"https://data.bis.org/topics/{topic}"
+            dataflow = s.query.split("/")[0] if "/" in s.query else "WS_CBPOL"
+            return f"https://data.bis.org/topics/{BIS_TOPICS[dataflow]}"
         case "imf_weo":
             return f"https://www.imf.org/external/datamapper/{s.query.split('/')[0]}@WEO"
         case "imf_cpi":
             return "https://data.imf.org/en/datasets/IMF.STA:CPI"
-        case "oecd_lt":
+        case "imf_qnea":
+            return "https://data.imf.org/en/datasets/IMF.STA:QNEA"
+        case "oecd":
+            agency, flow, _ = OECD_DATAFLOWS[s.query.split("/")[0]][0].split(",")
             return ("https://data-explorer.oecd.org/vis?df[ds]=dsDisseminateFinalDMZ"
-                    "&df[id]=DSD_STES%40DF_FINMARK&df[ag]=OECD.SDD.STES")
+                    f"&df[id]={urllib.parse.quote(flow)}&df[ag]={agency}")
         case "statbank":
             return f"https://www.statistikbanken.dk/{s.query.split('?')[0]}"
         case "mof":

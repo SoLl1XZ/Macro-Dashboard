@@ -3,6 +3,7 @@ import io
 import json
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -67,10 +68,19 @@ class FetchSourceTest(unittest.TestCase):
         def broken_batch(queries):
             raise ConnectionError("API down")
 
-        with mock.patch.dict(fetch_data.BATCH_FETCHERS, {"oecd_lt": broken_batch}):
-            batch, errors = fetch_source("oecd_lt", ["DEU", "ITA"])
+        with mock.patch.dict(fetch_data.BATCH_FETCHERS, {"oecd": broken_batch}):
+            batch, errors = fetch_source("oecd", ["FINMARK/IRLT/DEU", "FINMARK/IRLT/FRA"])
         self.assertEqual(batch, {})
-        self.assertEqual(set(errors), {"DEU", "ITA"})
+        self.assertEqual(set(errors), {"FINMARK/IRLT/DEU", "FINMARK/IRLT/FRA"})
+
+    def test_partly_failing_batch_keeps_what_worked(self):
+        def half_broken_batch(queries):
+            raise fetch_data.PartialBatch({"GOOD": [("2026-01-01", 1.0)]}, {"BAD": "HTTPError: 403"})
+
+        with mock.patch.dict(fetch_data.BATCH_FETCHERS, {"oecd": half_broken_batch}):
+            batch, errors = fetch_source("oecd", ["GOOD", "BAD"])
+        self.assertEqual(batch["GOOD"], [("2026-01-01", 1.0)])
+        self.assertEqual(errors, {"BAD": "HTTPError: 403"})
 
 
 class ApplyTransformsTest(unittest.TestCase):
@@ -174,6 +184,51 @@ class FetchBisTest(unittest.TestCase):
         self.assertIn("/WS_TC/2.0/Q.KR.H.A.M.770.A?", http_get.call_args.args[0])
 
 
+class FetchOecdTest(unittest.TestCase):
+    """fetch_oecd with canned SDMX-CSV answers instead of the network."""
+
+    YIELDS = ("DATAFLOW,REF_AREA,FREQ,MEASURE,TIME_PERIOD,OBS_VALUE\n"
+              "x,DEU,M,IRLT,2026-08,3.18\nx,FRA,M,IRLT,2026-08,4.0\n")
+    CONFIDENCE = "DATAFLOW,REF_AREA,FREQ,MEASURE,TIME_PERIOD,OBS_VALUE\nx,DEU,M,CCICP,2026-09,98.7\n"
+
+    def test_one_request_per_dataflow_and_measure(self):
+        queries = ["FINMARK/IRLT/DEU", "FINMARK/IRLT/FRA", "CLI/CCICP/DEU"]
+        with mock.patch.object(fetch_data, "http_get", side_effect=[self.YIELDS, self.CONFIDENCE]) as http_get:
+            batch = fetch_data.fetch_oecd(queries)
+        urls = [call.args[0] for call in http_get.call_args_list]
+        self.assertIn("DSD_STES@DF_FINMARK,4.0/DEU+FRA.M.IRLT.PA.....?", urls[0])
+        self.assertIn("DSD_STES@DF_CLI,4.1/DEU.M.CCICP.IX._Z.AA.IX._Z.H?", urls[1])
+        self.assertEqual(batch["FINMARK/IRLT/FRA"], [("2026-08-01", 4.0)])
+        self.assertEqual(batch["CLI/CCICP/DEU"], [("2026-09-01", 98.7)])
+
+    def test_country_missing_from_the_answer_gets_no_observations(self):
+        with mock.patch.object(fetch_data, "http_get", return_value=self.CONFIDENCE):
+            batch = fetch_data.fetch_oecd(["CLI/CCICP/DEU", "CLI/CCICP/NOR"])
+        self.assertEqual(batch["CLI/CCICP/NOR"], [])  # fetch_source reports it as an error
+
+    def test_a_failed_request_only_fails_its_own_queries(self):
+        def answer(url, *args, **kwargs):
+            if "DF_CLI" in url:
+                raise urllib.error.HTTPError(url, 403, "Forbidden", {}, None)
+            return self.YIELDS
+
+        with mock.patch.object(fetch_data, "http_get", side_effect=answer):
+            with self.assertRaises(fetch_data.PartialBatch) as raised:
+                fetch_data.fetch_oecd(["FINMARK/IRLT/DEU", "CLI/CCICP/DEU"])
+        self.assertEqual(raised.exception.batch["FINMARK/IRLT/DEU"], [("2026-08-01", 3.18)])
+        self.assertIn("403", raised.exception.errors["CLI/CCICP/DEU"])
+
+
+class FetchImfQneaTest(unittest.TestCase):
+    def test_quarterly_gdp_per_country(self):
+        answer = ("DATAFLOW,COUNTRY,INDICATOR,TIME_PERIOD,OBS_VALUE\n"
+                  "x,MYS,B1GQ,2026-Q1,480000\nx,MYS,B1GQ,2025-Q4,470000\n")
+        with mock.patch.object(fetch_data, "http_get", return_value=answer) as http_get:
+            batch = fetch_data.fetch_imf_qnea(["MYS"])
+        self.assertIn("/IMF.STA,QNEA/MYS.B1GQ.Q.NSA.XDC.Q?", http_get.call_args.args[0])
+        self.assertEqual(batch["MYS"], [("2025-10-01", 470000.0), ("2026-01-01", 480000.0)])
+
+
 class MofJgbTest(unittest.TestCase):
     """JGB yields from Japan's Ministry of Finance, parsed from saved sample files."""
 
@@ -229,6 +284,11 @@ class SourceUrlTest(unittest.TestCase):
                          "https://data.ecb.europa.eu/data/datasets/EXR/EXR.D.USD.EUR.SP00.A")
         self.assertEqual(source_url(Series("x", "X", "statbank", "PRIS01?VAREGR=000000&ENHED=300")),
                          "https://www.statistikbanken.dk/PRIS01")
+        self.assertEqual(source_url(Series("x", "X", "bis", "WS_XRU/D.ID.IDR.A")),
+                         "https://data.bis.org/topics/XRU")
+        self.assertEqual(source_url(Series("x", "X", "oecd", "CLI/CCICP/DEU")),
+                         "https://data-explorer.oecd.org/vis?df[ds]=dsDisseminateFinalDMZ"
+                         "&df[id]=DSD_STES%40DF_CLI&df[ag]=OECD.SDD.STES")
 
     def test_derived_series_have_no_link(self):
         self.assertIsNone(source_url(Series("x", "X", "derived", ("a", "b"), "spread")))
