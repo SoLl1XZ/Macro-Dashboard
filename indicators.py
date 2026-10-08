@@ -30,16 +30,43 @@ class Section:
     region: str | None = None
 
 
+# Menu order. The page puts Signaler in front and Sammenlign at the end; a region's
+# countries fold out under it. The old ids (us, europe, denmark, asia, china, japan, korea)
+# are kept, so links from before the regions still work.
 SECTIONS: list[Section] = [
     Section("global", "Global"),
-    Section("us", "USA"),
+    Section("north-america", "Nordamerika"),
+    Section("us", "USA", "north-america"),
+    Section("canada", "Canada", "north-america"),
     Section("europe", "Europa"),
-    Section("denmark", "Danmark"),
+    Section("uk", "Storbritannien", "europe"),
+    Section("germany", "Tyskland", "europe"),
+    Section("france", "Frankrig", "europe"),
+    Section("denmark", "Danmark", "europe"),
+    Section("norway", "Norge", "europe"),
+    Section("sweden", "Sverige", "europe"),
     Section("asia", "Asien"),
-    Section("china", "Kina"),
-    Section("japan", "Japan"),
-    Section("korea", "Sydkorea"),
+    Section("china", "Kina", "asia"),
+    Section("japan", "Japan", "asia"),
+    Section("korea", "Sydkorea", "asia"),
+    Section("thailand", "Thailand", "asia"),
+    Section("vietnam", "Vietnam", "asia"),
+    Section("indonesia", "Indonesien", "asia"),
+    Section("malaysia", "Malaysia", "asia"),
+    Section("india", "Indien", "asia"),
 ]
+
+# Every country tab starts with these panels, in this order and with these titles, so the
+# countries read the same way. A panel without a trustworthy free source is left out.
+CORE_GROUP = "Kernetal"
+CORE_TITLES = ("Styringsrente", "Statsrenter", "Rentekurve", "Inflation", "Ledighed",
+               "BNP-vækst (kvartal)", "BNP-vækst inkl. IMF-prognose", "Valuta",
+               "Forbruger- og erhvervstillid", "Statsgæld", "Betalingsbalance")
+
+
+def extras_group(country: str) -> str:
+    """Heading for a country's own panels after the core ones."""
+    return f"Særligt for {country}"
 
 
 @dataclass(frozen=True)
@@ -108,6 +135,49 @@ def owned_series(panels: list[Panel]) -> list[Series]:
     return [s for panel in panels for s in panel.series if isinstance(s, Series)]
 
 
+# Core panels that are built the same way for every country. `prefix` names the keys
+# (e.g. "ca" gives ca_debt); `code` is the IMF/OECD country code (e.g. "CAN").
+
+def imf_gdp_panel(section: str, key: str, code: str) -> Panel:
+    return Panel(key, section, "BNP-vækst inkl. IMF-prognose", "% år/år",
+                 "Real BNP-vækst pr. år. Indeværende og kommende år er IMF-prognoser.",
+                 (S(key, "Real BNP", "imf_weo", f"NGDP_RPCH/{code}"),), group=CORE_GROUP)
+
+
+def imf_unemployment_panel(section: str, prefix: str, code: str) -> Panel:
+    # For countries without monthly data in our sources: annual, with IMF projections.
+    return Panel(f"{prefix}_unemployment", section, "Ledighed", "%",
+                 "Arbejdsløshed pr. år (IMF). Månedlige tal findes ikke i de gratis kilder, vi bruger. "
+                 "Indeværende og kommende år er prognoser.",
+                 (S(f"{prefix}_unrate", "Ledighed", "imf_weo", f"LUR/{code}"),), group=CORE_GROUP)
+
+
+def confidence_panel(section: str, prefix: str, code: str, consumer: bool = True,
+                     business: bool = True) -> Panel:
+    series = []
+    if consumer:
+        series.append(S(f"{prefix}_cci", "Forbrugertillid", "oecd", f"CLI/CCICP/{code}"))
+    if business:
+        series.append(S(f"{prefix}_bci", "Erhvervstillid", "oecd", f"CLI/BCICP/{code}"))
+    return Panel(f"{prefix}_confidence", section, "Forbruger- og erhvervstillid", "Indeks",
+                 "OECD's sammenlignelige tillidsindikatorer fra nationale spørgeundersøgelser. "
+                 "100 = langsigtet gennemsnit.",
+                 tuple(series), group=CORE_GROUP, reference_lines=((100.0, "Gennemsnit"),))
+
+
+def debt_panel(section: str, key: str, code: str) -> Panel:
+    return Panel(key, section, "Statsgæld", "% af BNP",
+                 "Offentlig bruttogæld (IMF). Indeværende og kommende år er prognoser.",
+                 (S(key, "Offentlig gæld", "imf_weo", f"GGXWDG_NGDP/{code}"),), group=CORE_GROUP)
+
+
+def current_account_panel(section: str, key: str, code: str) -> Panel:
+    return Panel(key, section, "Betalingsbalance", "% af BNP",
+                 "Overskud (+) eller underskud (−) på betalingsbalancens løbende poster (IMF). "
+                 "Indeværende og kommende år er prognoser.",
+                 (S(key, "Løbende poster", "imf_weo", f"BCA_NGDPD/{code}"),), group=CORE_GROUP)
+
+
 PANELS: list[Panel] = [
     # ------------------------------------------------------------------ GLOBAL
     Panel("oil", "global", "Olie", "USD/tønde",
@@ -131,14 +201,13 @@ PANELS: list[Panel] = [
           "Forventet volatilitet i S&P 500 de næste 30 dage. Over ~30 = stress på markederne.",
           (S("vix", "VIX", "fred", "VIXCLS"),)),
     Panel("policy_rates", "global", "Styringsrenter", "%",
-          "Centralbankernes officielle renter side om side.",
-          (S("pr_us", "USA (Fed)", "bis", "D.US"),
-           S("pr_ea", "Eurozone (ECB)", "bis", "D.XM"),
-           S("pr_gb", "UK (BoE)", "bis", "D.GB"),
-           S("pr_jp", "Japan (BoJ)", "bis", "D.JP"),
-           S("pr_cn", "Kina (PBoC)", "bis", "D.CN"),
-           S("pr_dk", "Danmark (NB)", "bis", "D.DK"),
-           S("pr_ch", "Schweiz (SNB)", "bis", "D.CH"))),
+          "De største centralbankers renter side om side. Hver rente vises også under sit land.",
+          (R("us_ffr", "USA (Fed)"),
+           R("ecb_dfr", "Eurozonen (ECB)"),
+           R("uk_bank_rate", "UK (BoE)"),
+           R("jp_policy", "Japan (BoJ)"),
+           R("cn_lpr", "Kina (PBoC)"),
+           R("dk_cd", "Danmark (NB)"))),
     Panel("world_gdp", "global", "BNP-vækst inkl. IMF-prognose", "% år/år",
           "Real BNP-vækst. Indeværende og kommende år er IMF-prognoser (World Economic Outlook).",
           (S("gdp_world", "Verden", "imf_weo", "NGDP_RPCH/WEOWORLD"),
@@ -150,56 +219,137 @@ PANELS: list[Panel] = [
            S("infl_adv", "Avancerede økonomier", "imf_weo", "PCPIPCH/ADVEC"),
            S("infl_em", "Emerging markets", "imf_weo", "PCPIPCH/OEMDC"))),
 
+    # ------------------------------------------------------------- NORDAMERIKA
+    # The overview only refers to series that the USA and Canada tabs own.
+    Panel("na_policy", "north-america", "Styringsrenter", "%",
+          "Fed's effektive rente og Bank of Canadas styringsrente.",
+          (R("us_ffr", "USA (Fed)"), R("ca_policy", "Canada (BoC)"))),
+    Panel("na_10y", "north-america", "10-årige statsrenter", "%",
+          "USA dagligt, Canada som månedligt gennemsnit.",
+          (R("us_10y", "USA"), R("ca_10y", "Canada"))),
+    Panel("na_inflation", "north-america", "Inflation", "% år/år",
+          "Forbrugerprisinflation (CPI). Begge centralbanker sigter efter 2 %.",
+          (R("us_cpi", "USA"), R("ca_cpi", "Canada")),
+          reference_lines=((2.0, "Fed- og BoC-mål 2 %"),)),
+    Panel("na_unemployment", "north-america", "Ledighed", "%",
+          "Arbejdsløshed, sæsonkorrigeret.",
+          (R("us_unrate", "USA"), R("ca_unrate", "Canada"))),
+    Panel("na_gdp", "north-america", "BNP-vækst (kvartal)", "% år/år",
+          "Real BNP sammenlignet med samme kvartal året før.",
+          (R("us_gdp_yoy", "USA"), R("ca_gdp_q", "Canada"))),
+
     # --------------------------------------------------------------------- USA
-    Panel("us_fed", "us", "Fed funds-rente", "%",
-          "Fed's målinterval (øvre/nedre) og den faktiske effektive rente.",
+    Panel("us_fed", "us", "Styringsrente", "%",
+          "Fed's målinterval (øvre/nedre) og den faktiske effektive dag-til-dag-rente.",
           (S("us_ffr", "Effektiv rente", "fred", "DFF"),
            S("us_ff_upper", "Mål (øvre)", "fred", "DFEDTARU"),
-           S("us_ff_lower", "Mål (nedre)", "fred", "DFEDTARL"))),
-    Panel("us_yields", "us", "Statsrenter (Treasuries)", "%",
-          "Renten på amerikanske statsobligationer: verdens vigtigste 'risikofri' rente.",
+           S("us_ff_lower", "Mål (nedre)", "fred", "DFEDTARL")),
+          group=CORE_GROUP),
+    Panel("us_yields", "us", "Statsrenter", "%",
+          "Renten på amerikanske statsobligationer (Treasuries): verdens vigtigste 'risikofri' rente.",
           (S("us_10y", "10 år", "fred", "DGS10"),
            S("us_3m", "3 mdr.", "fred", "DGS3MO"),
            S("us_2y", "2 år", "fred", "DGS2"),
-           S("us_30y", "30 år", "fred", "DGS30"))),
-    Panel("us_curve", "us", "Rentekurve-spreads", "%-point",
+           S("us_30y", "30 år", "fred", "DGS30")),
+          group=CORE_GROUP),
+    Panel("us_curve", "us", "Rentekurve", "%-point",
           "Forskel mellem lang og kort rente. Negativ (inverteret kurve) har historisk varslet recession.",
           (S("us_10y2y", "10 år − 2 år", "fred", "T10Y2Y"),
-           S("us_10y3m", "10 år − 3 mdr.", "fred", "T10Y3M"))),
-    Panel("us_credit", "us", "Kreditspreads", "%-point",
-          "Merrente på virksomhedsobligationer over statsrenter. Stiger når markedet frygter konkurser.",
-          (S("us_hy", "High yield", "fred", "BAMLH0A0HYM2"),
-           S("us_ig", "Investment grade", "fred", "BAMLC0A0CM"))),
+           S("us_10y3m", "10 år − 3 mdr.", "fred", "T10Y3M")),
+          group=CORE_GROUP),
     Panel("us_inflation", "us", "Inflation", "% år/år",
           "Forbrugerpriser (CPI) og Fed's foretrukne mål: kerne-PCE. Fed sigter efter 2 %.",
           (S("us_cpi", "CPI", "fred", "CPIAUCSL", "yoy"),
            S("us_core_cpi", "Kerne-CPI", "fred", "CPILFESL", "yoy"),
            S("us_core_pce", "Kerne-PCE", "fred", "PCEPILFE", "yoy")),
-          reference_lines=INFLATION_TARGET_FED),
-    Panel("us_breakeven", "us", "Inflationsforventning (10 år)", "%",
-          "Markedets forventede gennemsnitlige inflation de næste 10 år (breakeven).",
-          (S("us_be10", "10-årig breakeven", "fred", "T10YIE"),)),
+          group=CORE_GROUP, reference_lines=INFLATION_TARGET_FED),
     Panel("us_unemployment", "us", "Ledighed", "%",
           "Arbejdsløshedsprocent. Halvdelen af Fed's dobbelte mandat.",
-          (S("us_unrate", "Ledighed", "fred", "UNRATE"),)),
+          (S("us_unrate", "Ledighed", "fred", "UNRATE"),),
+          group=CORE_GROUP),
+    Panel("us_gdp_q", "us", "BNP-vækst (kvartal)", "% år/år",
+          "Real BNP sammenlignet med samme kvartal året før. USA's egen overskrift er den "
+          "annualiserede vækst (se længere nede).",
+          (S("us_gdp_yoy", "Real BNP", "fred", "GDPC1", "yoy"),),
+          group=CORE_GROUP),
+    imf_gdp_panel("us", "us_gdp_imf", "USA"),
+    Panel("us_fx", "us", "Valuta", "Indeks",
+          "Dollarens styrke mod handelspartnere (bredt dollarindeks; samme serie som under Global).",
+          (R("usd_broad", "Bredt dollarindeks"),), change="pct", group=CORE_GROUP),
+    confidence_panel("us", "us", "USA"),
+    debt_panel("us", "us_debt", "USA"),
+    current_account_panel("us", "us_ca", "USA"),
     Panel("us_payrolls", "us", "Nye job (nonfarm payrolls)", "1.000 job/md.",
           "Månedlig ændring i antal lønmodtagere uden for landbruget.",
-          (S("us_nfp", "Ændring i job", "fred", "PAYEMS", "diff"),)),
+          (S("us_nfp", "Ændring i job", "fred", "PAYEMS", "diff"),),
+          group=extras_group("USA")),
     Panel("us_claims", "us", "Nye ledighedsansøgninger", "Antal/uge",
           "Ugentlige førstegangsansøgninger om dagpenge. Tidlig indikator for arbejdsmarkedet.",
-          (S("us_icsa", "Ansøgninger", "fred", "ICSA"),), change="pct"),
-    Panel("us_gdp", "us", "BNP-vækst", "% (annualiseret k/k)",
-          "Real BNP-vækst i kvartalet, omregnet til årlig takt.",
-          (S("us_gdp", "Real BNP", "fred", "A191RL1Q225SBEA"),)),
-    Panel("us_sentiment", "us", "Forbrugertillid", "Indeks",
-          "University of Michigan Consumer Sentiment.",
-          (S("us_umcsent", "Forbrugertillid", "fred", "UMCSENT"),)),
+          (S("us_icsa", "Ansøgninger", "fred", "ICSA"),), change="pct",
+          group=extras_group("USA")),
+    Panel("us_gdp", "us", "BNP-vækst (annualiseret k/k)", "% (annualiseret k/k)",
+          "Real BNP-vækst i kvartalet, omregnet til årlig takt: det tal, USA selv offentliggør.",
+          (S("us_gdp", "Real BNP", "fred", "A191RL1Q225SBEA"),),
+          group=extras_group("USA")),
+    Panel("us_credit", "us", "Kreditspreads", "%-point",
+          "Merrente på virksomhedsobligationer over statsrenter. Stiger når markedet frygter konkurser.",
+          (S("us_hy", "High yield", "fred", "BAMLH0A0HYM2"),
+           S("us_ig", "Investment grade", "fred", "BAMLC0A0CM")),
+          group=extras_group("USA")),
+    Panel("us_breakeven", "us", "Inflationsforventning (10 år)", "%",
+          "Markedets forventede gennemsnitlige inflation de næste 10 år (breakeven).",
+          (S("us_be10", "10-årig breakeven", "fred", "T10YIE"),),
+          group=extras_group("USA")),
     Panel("us_mortgage", "us", "30-årig boligrente", "%",
           "Gennemsnitlig rente på nye 30-årige fastforrentede boliglån.",
-          (S("us_mort30", "30-årig fast", "fred", "MORTGAGE30US"),)),
+          (S("us_mort30", "30-årig fast", "fred", "MORTGAGE30US"),),
+          group=extras_group("USA")),
+    Panel("us_sentiment", "us", "Forbrugertillid (Michigan)", "Indeks",
+          "University of Michigan Consumer Sentiment: den originale serie bag OECD's tal ovenfor.",
+          (S("us_umcsent", "Forbrugertillid", "fred", "UMCSENT"),),
+          group=extras_group("USA")),
     Panel("us_equities", "us", "S&P 500", "Indeks",
           "De 500 største amerikanske aktier.",
-          (S("sp500", "S&P 500", "fred", "SP500"),), change="pct"),
+          (S("sp500", "S&P 500", "fred", "SP500"),), change="pct",
+          group=extras_group("USA")),
+
+    # ------------------------------------------------------------------ CANADA
+    Panel("ca_policy", "canada", "Styringsrente", "%",
+          "Bank of Canadas styringsrente, dag-til-dag-renten og den 3-måneders interbankrente "
+          "(de to sidste som månedlige gennemsnit).",
+          (S("ca_policy", "BoC-rente", "bis", "D.CA"),
+           S("ca_overnight", "Dag-til-dag-rente", "fred", "IRSTCI01CAM156N"),
+           S("ca_3m", "3-mdr. interbankrente", "fred", "IR3TIB01CAM156N")),
+          group=CORE_GROUP),
+    Panel("ca_yields", "canada", "Statsrenter", "%",
+          "10-årig statsrente (månedligt gennemsnit). En 2-årig rente findes ikke i vores kilder.",
+          (S("ca_10y", "10 år", "oecd", "FINMARK/IRLT/CAN"),),
+          group=CORE_GROUP),
+    Panel("ca_curve", "canada", "Rentekurve", "%-point",
+          "10-årig statsrente minus 3-måneders interbankrente (månedlige gennemsnit). "
+          "Negativ (inverteret kurve) har historisk varslet svag vækst.",
+          (S("ca_10y3m", "10 år − 3 mdr.", "derived", ("ca_10y", "ca_3m"), "spread"),),
+          group=CORE_GROUP),
+    Panel("ca_inflation", "canada", "Inflation", "% år/år",
+          "Forbrugerprisinflation (IMF). Kerneinflation findes ikke i de gratis kilder, vi bruger.",
+          (S("ca_cpi", "CPI", "imf_cpi", "CAN"),),
+          group=CORE_GROUP, reference_lines=((2.0, "BoC-mål 2 % (1–3 %)"),)),
+    Panel("ca_unemployment", "canada", "Ledighed", "%",
+          "Harmoniseret arbejdsløshed (OECD), sæsonkorrigeret.",
+          (S("ca_unrate", "Ledighed", "fred", "LRHUTTTTCAM156S"),),
+          group=CORE_GROUP),
+    Panel("ca_gdp_q", "canada", "BNP-vækst (kvartal)", "% år/år",
+          "Real BNP sammenlignet med samme kvartal året før.",
+          (S("ca_gdp_q", "Real BNP", "fred", "NGDPRSAXDCCAQ", "yoy"),),
+          group=CORE_GROUP),
+    imf_gdp_panel("canada", "ca_gdp_imf", "CAN"),
+    Panel("usdcad", "canada", "Valuta", "CAD pr. USD",
+          "Canadiske dollar over for amerikanske dollar.",
+          (S("usdcad", "USD/CAD", "fred", "DEXCAUS"),), change="pct", decimals=4,
+          group=CORE_GROUP),
+    confidence_panel("canada", "ca", "CAN"),
+    debt_panel("canada", "ca_debt", "CAN"),
+    current_account_panel("canada", "ca_ca", "CAN"),
 
     # ------------------------------------------------------------------ EUROPA
     Panel("ecb_rates", "europe", "ECB-renter", "%",
