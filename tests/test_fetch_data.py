@@ -174,6 +174,40 @@ class FetchBisTest(unittest.TestCase):
         self.assertIn("/WS_TC/2.0/Q.KR.H.A.M.770.A?", http_get.call_args.args[0])
 
 
+class MofJgbTest(unittest.TestCase):
+    """JGB yields from Japan's Ministry of Finance, parsed from saved sample files."""
+
+    # Shaped like the real files: title line, header, "-" for missing, and (in the
+    # current-month file) a note line at the end that is not data.
+    HISTORICAL = ("Interest Rate,,,,(Unit : %)\n"
+                  "Date,1Y,2Y,10Y,40Y\n"
+                  "1999/12/30,0.1,0.2,1.7,-\n"
+                  "2026/9/30,1.684,1.952,3.057,4.1\n")
+    CURRENT = ("Interest Rate (October 2026),,,,(Unit : %)\n"
+               "Date,1Y,2Y,10Y,40Y\n"
+               "2026/9/30,1.7,1.95,3.06,4.1\n"
+               "2026/10/1,1.668,1.939,3.092,4.125\n"
+               '"  �If you cannot download the latest csv data, please clear the cache"\n')
+
+    def test_parses_dates_and_skips_missing_values_and_notes(self):
+        parsed = fetch_data.parse_mof_csv(self.HISTORICAL)
+        self.assertEqual(set(parsed), {"1Y", "2Y", "10Y", "40Y"})
+        self.assertEqual(parsed["10Y"], [("1999-12-30", 1.7), ("2026-09-30", 3.057)])
+        self.assertEqual(parsed["40Y"], [("2026-09-30", 4.1)])  # "-" in 1999 is dropped
+        self.assertEqual(len(fetch_data.parse_mof_csv(self.CURRENT)["2Y"]), 2)  # note line ignored
+
+    def test_file_without_header_is_an_error(self):
+        with self.assertRaises(ValueError):
+            fetch_data.parse_mof_csv("<html>Maintenance</html>")
+
+    def test_current_month_is_merged_on_top_of_history(self):
+        with mock.patch.object(fetch_data, "http_get", side_effect=[self.HISTORICAL, self.CURRENT]) as http_get:
+            batch = fetch_data.fetch_mof_jgb(["10Y", "7Y"])
+        self.assertEqual(batch["10Y"], [("1999-12-30", 1.7), ("2026-09-30", 3.06), ("2026-10-01", 3.092)])
+        self.assertNotIn("7Y", batch)  # unknown maturity: left out, so fetch_source reports it
+        self.assertTrue(all(call.kwargs["errors"] == "replace" for call in http_get.call_args_list))
+
+
 class FetchRecessionsTest(unittest.TestCase):
     def test_us_dates_fall_back_to_previous_run_when_fred_fails(self):
         def fred_down(series_id):

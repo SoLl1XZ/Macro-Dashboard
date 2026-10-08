@@ -33,7 +33,7 @@ DATA_JS_PREFIX = "window.MACRO_DATA = "
 SOURCE_NAMES = {
     "fred": "FRED", "ecb": "ECB", "eurostat": "Eurostat", "bis": "BIS",
     "imf_weo": "IMF World Economic Outlook", "imf_cpi": "IMF", "oecd_lt": "OECD",
-    "statbank": "Danmarks Statistik", "derived": "Beregnet",
+    "statbank": "Danmarks Statistik", "mof": "Japans finansministerium", "derived": "Beregnet",
 }
 SDMX_CSV = "application/vnd.sdmx.data+csv;version=1.0.0"
 # The APIs' bot filters disagree: FRED and the IMF block custom agents, the OECD blocks
@@ -43,7 +43,8 @@ USER_AGENT = "curl/8.7.1"
 
 # --------------------------------------------------------------------------- helpers
 
-def http_get(url: str, accept: str | None = None, attempts: int = 3) -> str:
+def http_get(url: str, accept: str | None = None, attempts: int = 3, errors: str = "strict") -> str:
+    """GET a URL as text. errors="replace" tolerates bytes that aren't valid UTF-8."""
     headers = {"User-Agent": USER_AGENT}
     if accept:
         headers["Accept"] = accept
@@ -51,7 +52,7 @@ def http_get(url: str, accept: str | None = None, attempts: int = 3) -> str:
     for attempt in range(1, attempts + 1):
         try:
             with urllib.request.urlopen(request, timeout=90) as response:
-                return response.read().decode("utf-8")
+                return response.read().decode("utf-8", errors=errors)
         except urllib.error.HTTPError as error:
             # A 4xx means the query itself is wrong, so retrying cannot help.
             # 429 (rate limited) and 5xx (server trouble) are often temporary.
@@ -203,6 +204,45 @@ def fetch_oecd_lt(countries: list[str]) -> Batch:
     return group_sdmx_rows(http_get(url), "REF_AREA")
 
 
+# Japan's Ministry of Finance: the full history up to last month, then the current month.
+MOF_URLS = (
+    "https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/historical/jgbcme_all.csv",
+    "https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/jgbcme.csv",
+)
+
+
+def parse_mof_csv(text: str) -> Batch:
+    """Parse a JGB yield file from Japan's Ministry of Finance into one series per maturity.
+
+    The file has a title line, a header ("Date,1Y,2Y,...") and sometimes a note at the end;
+    only rows dated YYYY/M/D are data. "-" marks a maturity that had no yield that day.
+    """
+    rows = list(csv.reader(io.StringIO(text)))
+    header = next((row for row in rows if row and row[0] == "Date"), None)
+    if header is None:
+        raise ValueError("No 'Date' header in the MoF file")
+    maturities = [maturity for maturity in header[1:] if maturity]
+    pairs: dict[str, list[tuple[str, str]]] = {maturity: [] for maturity in maturities}
+    for row in rows:
+        m = re.fullmatch(r"(\d{4})/(\d{1,2})/(\d{1,2})", row[0]) if row else None
+        if m is None:
+            continue
+        iso_date = f"{m[1]}-{int(m[2]):02d}-{int(m[3]):02d}"
+        for maturity, value in zip(maturities, row[1:]):
+            pairs[maturity].append((iso_date, value))
+    return {maturity: to_observations(series) for maturity, series in pairs.items()}
+
+
+def fetch_mof_jgb(maturities: list[str]) -> Batch:
+    values_by_maturity: dict[str, dict[str, float]] = defaultdict(dict)
+    for url in MOF_URLS:  # the current month comes last, so its values win where they overlap
+        # The current-month file ends with a note in a Japanese encoding, not valid UTF-8.
+        for maturity, observations in parse_mof_csv(http_get(url, errors="replace")).items():
+            values_by_maturity[maturity].update(observations)
+    return {maturity: sorted(values_by_maturity[maturity].items())
+            for maturity in maturities if maturity in values_by_maturity}
+
+
 SINGLE_FETCHERS: dict[str, Callable[[str], list[Observation]]] = {
     "fred": fetch_fred,
     "ecb": fetch_ecb,
@@ -214,6 +254,7 @@ BATCH_FETCHERS: dict[str, Callable[[list[str]], Batch]] = {
     "imf_weo": fetch_imf_weo,
     "imf_cpi": fetch_imf_cpi,
     "oecd_lt": fetch_oecd_lt,
+    "mof": fetch_mof_jgb,
 }
 
 
@@ -346,6 +387,8 @@ def source_url(s: Series) -> str | None:
                     "&df[id]=DSD_STES%40DF_FINMARK&df[ag]=OECD.SDD.STES")
         case "statbank":
             return f"https://www.statistikbanken.dk/{s.query.split('?')[0]}"
+        case "mof":
+            return "https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/index.htm"
         case _:
             return None  # derived series are computed here, not published anywhere
 
