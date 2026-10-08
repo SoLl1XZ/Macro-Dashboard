@@ -596,6 +596,7 @@ def build_payload(panels: list[Panel], processed: dict[str, list[Observation]],
                 "group": panel.group,
                 "referenceLines": [{"value": value, "label": label} for value, label in panel.reference_lines],
                 "split": panel.split,
+                "comparable": panel.comparable,
                 # A reference is only a pointer; the page fills in the owner's data.
                 "series": [series_payload(s, panel, processed, errors, today) if isinstance(s, Series)
                            else {"ref": s.key, "label": s.label}

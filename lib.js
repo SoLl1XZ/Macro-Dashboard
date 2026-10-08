@@ -70,6 +70,7 @@ function buildHash(sectionId, rangeYears, extra = {}) {
 // ---------------------------------------------------------------------- Compare tab
 
 const MAX_COMPARE_COUNTRIES = 8; // more lines than this can't be told apart
+const CORE_GROUP = "Kernetal"; // the group of a country's core panels (CORE_GROUP in indicators.py)
 
 // The core panels a comparison can show, with stable slugs for the URL. The titles must
 // match CORE_TITLES in indicators.py (a Python test checks this).
@@ -231,7 +232,7 @@ function search(query, documents, limit = 12) {
 if (typeof module === "object" && module.exports) {
   module.exports = {
     DEFAULT_RANGE_YEARS, MAX_RANGE_YEARS, PRESET_RANGES, isValidRange, parseRange, parseMonth,
-    parseList, parseHashState, buildHash, MAX_COMPARE_COUNTRIES, COMPARE_PARAMETERS,
+    parseList, parseHashState, buildHash, MAX_COMPARE_COUNTRIES, CORE_GROUP, COMPARE_PARAMETERS,
     DEFAULT_COMPARE, parseCompareSelection, normalizeText, tokenize, editDistance, wordScore,
     SYNONYMS, search,
   };

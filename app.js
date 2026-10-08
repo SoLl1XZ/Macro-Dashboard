@@ -205,7 +205,7 @@ function renderSeriesTable(panel) {
   panel.series.forEach((series, index) => {
     const row = el("tr");
     const swatch = el("span", "swatch");
-    swatch.style.setProperty("--swatch", seriesColor(index));
+    swatch.style.setProperty("--swatch", seriesColor(series.colorIndex ?? index));
     swatch.setAttribute("aria-hidden", "true");
     const nameText = el("div", "", series.label);
     const name = el("div", "series-name");
@@ -578,8 +578,9 @@ function tooltipOptions(panel) {
 function buildDatasets(panel) {
   const surface = cssVar("--surface");
   return panel.series.map((series, index) => {
-    // A split card's charts continue the card's colour order, matching its series table.
-    const color = cssVar(`--series-${index + 1 + (panel.colorOffset ?? 0)}`);
+    // A split card's charts continue the card's colour order, matching its series table, and
+    // on the Compare tab each country keeps its colour (colorIndex) even when one has no data.
+    const color = cssVar(`--series-${(series.colorIndex ?? index + (panel.colorOffset ?? 0)) + 1}`);
     const forecastStart = series.forecastFrom ? Date.parse(series.forecastFrom) : null;
     return {
       label: series.label,
@@ -1039,8 +1040,312 @@ function comparisonCharts(entries, useIndex) {
                            entry.panel.decimals, [named[index]], latest)));
 }
 
+// The Compare tab: choose countries, then parameters; one chart per parameter with a line per
+// country, and a table of the latest values. The choice is in the URL (c=, p=). The old
+// comparison of two series is its advanced mode (a=, b=).
+
+const COMPARE_PRESETS = [
+  { id: "norden", title: "Norden", countries: ["denmark", "norway", "sweden"] },
+  { id: "europa", title: "Europa", region: "europe" },
+  { id: "nordamerika", title: "Nordamerika", region: "north-america" },
+  { id: "asien", title: "Asien", region: "asia" },
+];
+const comparePanels = new Map(); // "cmp-<slug>" -> the panel drawn for a parameter
+
 function renderCompare(params) {
   destroyCharts();
+  const countries = DATA.sections.filter(section => section.region);
+  const selection = parseCompareSelection(params, countries.map(country => country.id));
+  if (selection.advanced) renderAdvancedCompare(params);
+  else renderCountryCompare(selection, countries);
+}
+
+function corePanel(countryId, title) {
+  return DATA.panels.find(panel => panel.section === countryId && panel.group === CORE_GROUP
+                          && panel.title === title) ?? null;
+}
+
+// The series to compare: the panel's comparable one if it names one (Denmark's harmonised
+// unemployment, not its registered one), else its first.
+function comparableSeries(panel) {
+  return panel?.series.find(series => series.key === panel.comparable) ?? panel?.series[0] ?? null;
+}
+
+// A country's line is named after the country, plus what it measures when that differs
+// from the others: a currency's quote, or business instead of consumer confidence.
+function compareLineLabel(parameter, country, series) {
+  if (parameter.slug === "valuta" || (parameter.slug === "tillid" && series.label !== "Forbrugertillid")) {
+    return `${country.title} (${series.label})`;
+  }
+  return country.title;
+}
+
+// "Valuta": currencies have very different levels, so each is shown as an index (100 at the
+// common start of the visible period), as the market quotes it.
+function rebasedToCommonStart(seriesList) {
+  const start = rangeStart(rangeYears) ?? -Infinity;
+  const firsts = seriesList.map(series => series.data.find(([date]) => Date.parse(date) >= start)?.[0])
+    .filter(Boolean);
+  if (firsts.length === 0) return { commonStart: null, series: [] };
+  const commonStart = firsts.sort().at(-1);
+  return {
+    commonStart,
+    series: seriesList.map(series => {
+      const points = series.data.filter(([date]) => date >= commonStart);
+      const base = points[0]?.[1];
+      return { ...series, data: base > 0 ? points.map(([date, value]) => [date, value / base * 100]) : [] };
+    }).filter(series => series.data.length > 0),
+  };
+}
+
+// The chart for one parameter: a line per chosen country in its fixed colour.
+function compareParameterPanel(parameter, chosen) {
+  const lines = [];
+  let model = null;
+  chosen.forEach((country, colorIndex) => {
+    const panel = corePanel(country.id, parameter.title);
+    const series = comparableSeries(panel);
+    if (!series || series.data.length === 0) return;
+    model ??= panel;
+    lines.push({ ...series, label: compareLineLabel(parameter, country, series), colorIndex });
+  });
+  if (!model) return null;
+  let series = lines;
+  let unit = model.unit;
+  let note = null;
+  if (parameter.slug === "valuta") {
+    const rebased = rebasedToCommonStart(lines);
+    series = rebased.series;
+    unit = "Indeks";
+    note = rebased.commonStart ? `100 = ${formatPeriod(rebased.commonStart, "D")}` : null;
+  }
+  if (series.length === 0) return null;
+  const xMax = Math.max(...series.map(item => Date.parse(item.data.at(-1)[0])));
+  return {
+    id: `cmp-${parameter.slug}`, section: COMPARE_TAB.id, title: parameter.title, unit, note,
+    description: "", decimals: model.decimals, change: model.change, referenceLines: [], series, xMax,
+  };
+}
+
+// Colour of a table cell: where the latest value ranks among the last 10 years.
+function percentileLevel(percentile) {
+  if (percentile === null || percentile === undefined) return "none";
+  if (percentile < 10) return "neg-strong";
+  if (percentile < 30) return "neg-weak";
+  if (percentile < 70) return "neutral";
+  if (percentile < 90) return "pos-weak";
+  return "pos-strong";
+}
+
+function renderCompareTable(chosen, parameters) {
+  const table = el("table", "compare-table");
+  table.append(el("caption", "visually-hidden", "Seneste værdi pr. land og parameter"));
+  const head = el("tr");
+  head.append(el("th", "", "Land"));
+  for (const parameter of parameters) head.append(el("th", "num", parameter.title));
+  const thead = el("thead");
+  thead.append(head);
+  const body = el("tbody");
+  chosen.forEach((country, colorIndex) => {
+    const row = el("tr");
+    const name = el("th", "compare-country");
+    name.scope = "row";
+    const swatch = el("span", "swatch");
+    swatch.style.setProperty("--swatch", seriesColor(colorIndex));
+    swatch.setAttribute("aria-hidden", "true");
+    name.append(swatch, country.title);
+    row.append(name);
+    for (const parameter of parameters) {
+      const panel = corePanel(country.id, parameter.title);
+      const series = comparableSeries(panel);
+      const summary = series?.summary;
+      if (!summary) {
+        const cell = el("td", "num compare-missing", "—");
+        cell.title = panel
+          ? `Data mangler: ${series?.error ?? "ukendt fejl"}`
+          : `${parameter.title} for ${country.title}: ingen gratis kilde i vores data`;
+        row.append(cell);
+        continue;
+      }
+      const percentile = summary.percentile10y;
+      const format = seriesPanel(panel, series);
+      const cell = el("td", `num heat-${percentileLevel(percentile)}`, formatNumber(summary.last, format.decimals));
+      const rank = typeof percentile === "number" ? `, ${Math.round(percentile)}. percentil (10 år)` : "";
+      cell.title = `${series.label}: ${formatNumber(summary.last, format.decimals)} ${format.unit} · ${periodLabel(series)}${rank}`;
+      row.append(cell);
+    }
+    body.append(row);
+  });
+  table.append(thead, body);
+  const wrapper = el("div", "compare-table-wrap");
+  wrapper.append(table);
+  return wrapper;
+}
+
+function renderCompareChartCard(panel) {
+  const card = el("article", "card compare-chart");
+  card.id = `panel-${panel.id}`;
+  const head = el("header", "card-head");
+  const tools = el("div", "card-tools");
+  tools.append(el("span", "card-unit", panel.note ? `${panel.unit}, ${panel.note}` : panel.unit),
+               renderExpandButton(panel));
+  head.append(el("h3", "card-title", panel.title), tools);
+  const slot = renderChartSlot(panel);
+  slot.addEventListener("click", () => {
+    if (lastPointerType === "mouse") openFullscreen(panel);
+  });
+  card.append(head, slot);
+  return card;
+}
+
+function renderCompareResults(selection, countries) {
+  destroyCharts();
+  comparePanels.clear();
+  const byId = new Map(countries.map(country => [country.id, country]));
+  const chosen = selection.countries.map(id => byId.get(id));
+  const parameters = COMPARE_PARAMETERS.filter(parameter => selection.parameters.includes(parameter.slug));
+  const results = document.getElementById("compare-results");
+  if (chosen.length === 0 || parameters.length === 0) {
+    results.replaceChildren(el("p", "section-note",
+      chosen.length === 0 ? "Vælg mindst ét land." : "Vælg mindst én parameter."));
+    return;
+  }
+
+  const legend = el("div", "compare-legend");
+  chosen.forEach((country, index) => {
+    const item = el("span", "compare-legend-item");
+    const swatch = el("span", "swatch");
+    swatch.style.setProperty("--swatch", seriesColor(index));
+    swatch.setAttribute("aria-hidden", "true");
+    item.append(swatch, country.title);
+    legend.append(item);
+  });
+
+  const grid = el("div", "compare-grid");
+  for (const parameter of parameters) {
+    const panel = compareParameterPanel(parameter, chosen);
+    if (!panel) {
+      grid.append(el("p", "section-note compare-empty", `${parameter.title}: ingen data for de valgte lande.`));
+      continue;
+    }
+    comparePanels.set(panel.id, panel);
+    grid.append(renderCompareChartCard(panel));
+  }
+  const notes = [];
+  if (parameters.some(parameter => parameter.slug === "valuta")) {
+    notes.push(el("p", "section-note", "Valuta vises som indeks og som markedet noterer kursen: USD/XXX "
+      + "(fx USD/DKK) stiger, når landets valuta svækkes; EUR/USD og GBP/USD stiger, når den styrkes. "
+      + "USA vises med det brede dollarindeks."));
+  }
+  results.replaceChildren(legend, grid, ...notes,
+                          el("h3", "compare-subheading", "Seneste værdier"),
+                          el("p", "section-note", "Farven viser niveauet i forhold til landets egne seneste 10 år "
+                            + "(percentil). — betyder ingen data; hold musen over for at se hvorfor."),
+                          renderCompareTable(chosen, parameters));
+  showCharts();
+}
+
+function renderCountryCompare(selection, countries) {
+  const state = { countries: [...selection.countries], parameters: [...selection.parameters] };
+  const chips = new Map(); // country id -> chip button
+
+  const apply = () => {
+    history.replaceState(null, "", hashFor(COMPARE_TAB.id, rangeYears, { c: state.countries, p: state.parameters }));
+    shownView = viewKey(parseHash()); // the URL changed without a redraw of the tab
+    const full = state.countries.length >= MAX_COMPARE_COUNTRIES;
+    for (const [id, chip] of chips) {
+      const on = state.countries.includes(id);
+      chip.setAttribute("aria-pressed", String(on));
+      chip.disabled = full && !on;
+      chip.title = chip.disabled ? `Højst ${MAX_COMPARE_COUNTRIES} lande ad gangen` : "";
+    }
+    renderCompareResults(state, countries);
+  };
+  const setCountries = ids => {
+    state.countries = ids.slice(0, MAX_COMPARE_COUNTRIES);
+    apply();
+  };
+
+  const presets = el("div", "compare-presets");
+  presets.append(el("span", "compare-label", "Hurtigvalg:"));
+  for (const preset of COMPARE_PRESETS) {
+    const ids = preset.countries ?? countries.filter(country => country.region === preset.region).map(country => country.id);
+    const button = el("button", "text-button", preset.title);
+    button.type = "button";
+    button.addEventListener("click", () => setCountries(ids));
+    presets.append(button);
+  }
+  const clear = el("button", "text-button", "Ryd");
+  clear.type = "button";
+  clear.addEventListener("click", () => setCountries([]));
+  presets.append(clear);
+
+  const regions = el("div", "compare-regions");
+  for (const { section: region, countries: members } of sectionTree()) {
+    if (members.length === 0) continue;
+    const group = el("div", "compare-region");
+    const head = el("div", "compare-region-head");
+    const all = el("button", "link-button", "Vælg hele regionen");
+    all.type = "button";
+    all.addEventListener("click", () => {
+      const ids = members.map(country => country.id);
+      const allChosen = ids.every(id => state.countries.includes(id));
+      setCountries(allChosen ? state.countries.filter(id => !ids.includes(id))
+                             : [...state.countries, ...ids.filter(id => !state.countries.includes(id))]);
+    });
+    head.append(el("span", "compare-region-title", region.title), all);
+    const row = el("div", "compare-chips");
+    for (const country of members) {
+      const chip = el("button", "chip", country.title);
+      chip.type = "button";
+      chip.addEventListener("click", () => {
+        setCountries(state.countries.includes(country.id)
+          ? state.countries.filter(id => id !== country.id)
+          : [...state.countries, country.id]);
+      });
+      chips.set(country.id, chip);
+      row.append(chip);
+    }
+    group.append(head, row);
+    regions.append(group);
+  }
+
+  const parameterBox = el("div", "compare-parameters");
+  for (const parameter of COMPARE_PARAMETERS) {
+    const label = el("label", "compare-check");
+    const box = el("input");
+    box.type = "checkbox";
+    box.checked = state.parameters.includes(parameter.slug);
+    box.addEventListener("change", () => {
+      state.parameters = COMPARE_PARAMETERS.map(item => item.slug).filter(slug =>
+        slug === parameter.slug ? box.checked : state.parameters.includes(slug));
+      apply();
+    });
+    label.append(box, parameter.title);
+    parameterBox.append(label);
+  }
+
+  const advanced = el("button", "text-button", "Avanceret: to vilkårlige serier");
+  advanced.type = "button";
+  advanced.addEventListener("click", () => {
+    location.hash = hashFor(COMPARE_TAB.id, rangeYears, DEFAULT_COMPARISON);
+  });
+  const heading = el("div", "compare-heading");
+  heading.append(el("h2", "group-heading", "Sammenlign lande"), advanced);
+
+  const step1 = el("section", "compare-step");
+  step1.append(el("h3", "compare-subheading", `1. Vælg lande (højst ${MAX_COMPARE_COUNTRIES})`), presets, regions);
+  const step2 = el("section", "compare-step");
+  step2.append(el("h3", "compare-subheading", "2. Vælg parametre"), parameterBox);
+  const results = el("div", "compare-results");
+  results.id = "compare-results";
+  document.getElementById("panels").replaceChildren(heading, step1, step2, results);
+  apply();
+}
+
+// The old comparison of any two series, kept as the advanced mode (a= and b= in the URL),
+// so links from before the country comparison still work.
+function renderAdvancedCompare(params) {
   const lookup = seriesLookup();
   const pick = (name) => (lookup.has(params.get(name)) ? params.get(name) : DEFAULT_COMPARISON[name]);
   const choice = { a: pick("a"), b: pick("b"), index: params.get("index") === "1" ? "1" : "0" };
@@ -1076,8 +1381,14 @@ function renderCompare(params) {
   }
   const charts = comparisonCharts(entries, useIndex);
 
+  const back = el("button", "text-button", "← Sammenlign lande");
+  back.type = "button";
+  back.addEventListener("click", () => { location.hash = hashFor(COMPARE_TAB.id, rangeYears); });
+  const heading = el("div", "compare-heading");
+  heading.append(el("h2", "group-heading", "Sammenlign to vilkårlige serier"), back);
+
   document.getElementById("panels").replaceChildren(
-    el("h2", "group-heading", "Sammenlign to serier"),
+    heading,
     controls,
     ...notes.map(note => el("p", "section-note", note)),
     ...charts.map(chart => chart.card),
@@ -1101,7 +1412,7 @@ let dialogSlider = null;
 let lastPointerType = "mouse";
 
 function findPanel(panelId) {
-  return DATA.panels.find(panel => panel.id === panelId) ?? null;
+  return DATA.panels.find(panel => panel.id === panelId) ?? comparePanels.get(panelId) ?? null;
 }
 
 function monthStart(month) {
@@ -1755,6 +2066,10 @@ function renderSection(sectionId) {
 }
 
 let shownView = null; // the tab, period and tab options on screen, e.g. "europe|5|"
+
+function viewKey(state) {
+  return `${state.sectionId}|${state.rangeYears}|${state.params}`;
+}
 let shownSectionId = null;
 let shownPanelId = null;
 
@@ -1774,7 +2089,7 @@ function focusPanel(panelId) {
 // `force` redraws anyway, e.g. when the colour scheme flips.
 function route(force = false) {
   const state = parseHash();
-  const view = `${state.sectionId}|${state.rangeYears}|${state.params}`;
+  const view = viewKey(state);
   const redraw = force || view !== shownView;
   if (redraw) {
     if (state.rangeYears !== rangeYears) panelWindows.clear(); // a new period resets every slider

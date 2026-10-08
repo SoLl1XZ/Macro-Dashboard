@@ -68,6 +68,11 @@ class CatalogTest(unittest.TestCase):
                 if not panel.split:
                     self.assertEqual(owner_by_key[ref.key].change, panel.change)
 
+    def test_comparable_series_belongs_to_its_panel(self):
+        for panel in PANELS:
+            if panel.comparable:
+                self.assertIn(panel.comparable, [s.key for s in panel.series], panel.id)
+
     def test_derived_series_use_fetched_series_as_input(self):
         fetched_keys = {s.key for s in ALL_SERIES if s.source != "derived"}
         for s in ALL_SERIES:
@@ -117,6 +122,7 @@ class CompareParametersTest(unittest.TestCase):
         lib = (Path(__file__).parent.parent / "lib.js").read_text(encoding="utf-8")
         block = lib[lib.index("const COMPARE_PARAMETERS"):lib.index("];", lib.index("const COMPARE_PARAMETERS"))]
         self.assertEqual(re.findall(r'title: "([^"]+)"', block), list(CORE_TITLES))
+        self.assertIn(f'const CORE_GROUP = "{CORE_GROUP}";', lib)
 
 
 class CorePanelsTest(unittest.TestCase):

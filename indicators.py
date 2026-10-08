@@ -112,6 +112,10 @@ class Panel:
     # Draw each series in its own chart (same time axis), for series in different units:
     # never two y-axes. A referenced series keeps its owner's unit and change type.
     split: bool = False
+    # The series the Compare tab uses for this country, if not the first one: the measure
+    # that is comparable across countries (e.g. Denmark's harmonised unemployment rather
+    # than its registered one, which the tab shows first).
+    comparable: str | None = None
 
 
 # Euro area recessions as (peak quarter, trough quarter) from the CEPR-EABCN Business Cycle
@@ -739,14 +743,14 @@ PANELS: list[Panel] = [
            S("dk_core", "Kerne-HICP (ekskl. energi og fødevarer)", "eurostat",
              "prc_hicp_minr?geo=DK&coicop18=TOT_X_NRG_FOOD&unit=RCH_A")),
           # Denmark has no target of its own; the fixed exchange rate imports the ECB's.
-          group=CORE_GROUP, reference_lines=INFLATION_TARGET_ECB),
+          group=CORE_GROUP, reference_lines=INFLATION_TARGET_ECB, comparable="dk_hicp"),
     Panel("dk_unemployment", "denmark", "Ledighed", "%",
           "Bruttoledighed (registreret, Danmarks Statistik) og harmoniseret ledighed (spørgeundersøgelse, "
           "Eurostat), som kan sammenlignes med andre lande. Begge sæsonkorrigeret.",
           (S("dk_unrate", "Bruttoledighed", "statbank", "AUS08?OMRÅDE=000&SAESONFAK=9"),
            S("dk_unrate_lfs", "Harmoniseret", "eurostat",
              "une_rt_m?geo=DK&age=TOTAL&sex=T&s_adj=SA&unit=PC_ACT")),
-          group=CORE_GROUP),
+          group=CORE_GROUP, comparable="dk_unrate_lfs"),
     Panel("dk_gdp_q", "denmark", "BNP-vækst (kvartal)", "% år/år",
           "Real BNP sammenlignet med samme kvartal året før (Eurostat). Væksten i forhold til kvartalet før "
           "står længere nede.",

@@ -1112,6 +1112,170 @@ main {
 }
 
 .compare-card { grid-column: 1 / -1; }
+
+/* The country comparison: steps, chips, a grid of charts and a table, all full width. */
+.compare-heading,
+.compare-step,
+.compare-results { grid-column: 1 / -1; }
+
+.compare-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.compare-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compare-subheading {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.compare-presets,
+.compare-chips,
+.compare-parameters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.compare-regions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 10px 20px;
+}
+
+.compare-region-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.compare-region-title { font-size: 13px; font-weight: 600; }
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.chip {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chip:hover:not(:disabled) { background: var(--wash); color: var(--text-primary); }
+
+.chip[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--text-primary);
+  color: var(--page);
+}
+
+.chip:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.chip:focus-visible,
+.link-button:focus-visible,
+.compare-check input:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 2px;
+}
+
+.compare-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.compare-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+}
+
+.compare-chart .chart { height: 200px; }
+
+/* Wide tables scroll inside their box on a phone, never the page. */
+.compare-table-wrap { overflow-x: auto; }
+
+.compare-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-table th {
+  padding: 4px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.compare-table th.num { text-align: right; }
+
+.compare-table td {
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--heat-fill);
+  color: var(--heat-text);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.compare-table .compare-country {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.compare-country .swatch { margin-top: 0; }
+
+.compare-table td.compare-missing {
+  background: transparent;
+  color: var(--text-muted);
+  text-align: center;
+  cursor: help;
+}
 .compare-card .chart { height: 280px; }
 
 .compare-legend {
