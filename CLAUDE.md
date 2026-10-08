@@ -5,9 +5,14 @@ Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, so
 
 ## Faner, regioner og lande
 
-- Topniveau: **Signaler** · Global · Nordamerika · Europa · Asien · **Sammenlign**.
+- Topniveau: **Signaler** · Global · Råvarer · Nordamerika · Europa · Asien · **Sammenlign**.
   - Signaler viser kalender, ugens største bevægelser og z-score-heatmap.
-  - Sammenlign viser to vilkårlige serier.
+  - Global har dollarindeks, VIX, styringsrenter og verdens-BNP og -inflation.
+  - Råvarer (`commodities`) har grupperne Indeks, Energi, Industrimetaller, Ædelmetaller, Landbrug og Analyse
+    (alle `change="pct"`). Olie, gas, kobber og hvede er flyttet hertil med uændrede keys.
+  - Sammenlign: vælg lande (højst 8, chips pr. region, hurtigvalg) og parametre (kernetitlerne).
+    Én graf pr. parameter med fast farve pr. land, plus en tabel farvet efter 10-års-percentil.
+    Den gamle sammenligning af to vilkårlige serier findes som "Avanceret" (`a=`/`b=`).
 - Hver region har en oversigtsside, og dens lande glider ud ved hover eller fokus:
   - Nordamerika: `us`, `canada`
   - Europa: `uk`, `germany`, `france`, `denmark`, `norway`, `sweden`
@@ -24,8 +29,39 @@ Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, so
   - Fælles kernepaneler bygges med fabrikkerne `imf_gdp_panel`, `imf_unemployment_panel`, `confidence_panel`, `debt_panel` og `current_account_panel`.
 - **Genbrug med `R(key, label)`** (`Ref`): et panel kan vise en serie, som et andet panel ejer, fx landenes tal i regionsoversigterne.
   - Hver serie-key ejes af præcis ét panel og hentes én gang.
-  - Siden fylder ejerens data ind (`resolveReferences`).
+  - Siden fylder ejerens data ind (`resolveReferences`) inkl. ejerens enhed og `change`.
   - Signaler og Sammenlign tæller kun ejeren, så intet vises to gange.
+- **Andre panel-felter:**
+  - `split=True`: én graf pr. serie med fælles tidsakse, til serier i forskellige enheder (aldrig to y-akser).
+  - `comparable="<key>"`: den serie, Sammenlign bruger, når det ikke er den første. Danmark viser fx
+    bruttoledighed og KPI først, men sammenlignes med harmoniseret ledighed og HICP.
+- **`INPUT_SERIES`** hentes kun som input til beregninger (fx US CPI-niveau til real oliepris) og vises ikke.
+- **Derived-beregninger:** `spread` (a − b), `ratio` (a / b) og `real` (a i seneste måneds priser via indeks b).
+
+## URL'en (eneste kilde til tilstand)
+
+`#<fane>?range=7&panel=jp_jgb&full=1&from=2007-01&to=2012-12` — parsing og opbygning er rene funktioner i
+`lib.js` (`parseHashState`, `buildHash`), testet med Node.
+
+| Parameter | Betydning |
+|---|---|
+| `range` | Periode i hele år, 1–100, eller 0 = Maks. Mangler den, er det 5 år. Ugyldige værdier giver 5. |
+| `panel` | Scroll til panelet og fremhæv det (søgning, Signaler, delte links). |
+| `full=1` | Åbn panelet i fuldskærm. Tilbage-knappen lukker. |
+| `from`, `to` | Udsnit (`YYYY-MM`) i fuldskærm. Uden for fuldskærm er en grafs udsnit kun i hukommelsen. |
+| `c`, `p` | Sammenlign: lande (`c=denmark,sweden`) og parametre med stabile slugs (`p=inflation,ledighed`). |
+| `a`, `b`, `index` | Sammenlign, avanceret: to serie-keys og indeks 100. |
+
+## Funktioner på siden
+
+- **Søgning** (Ctrl/Cmd+K, "/" eller luppen): indbygget `<dialog>`. Matcher i `lib.js`: æøå og accenter ignoreres,
+  1–2 stavefejl tolereres, synonymer (`SYNONYMS`, fx gold → guld), og ord i serienavne tæller halvt.
+- **Fuldskærm**: udvid-knap på hvert kort (eller klik på grafen med mus). Zoom/pan kun på x-aksen med
+  chartjs-plugin-zoom 2.2.0 + hammerjs 2.0.8 (pinned med SRI); y-aksen følger det synlige udsnit af sig selv.
+- **Tidsudsnit pr. graf**: en slider med oversigt under hver graf (`renderRangeSlider`). Udsnittet gemmes pr. panel
+  (`panelWindows`) og nulstilles, når den globale periode ændres. I fuldskærm er slider, zoom og kortet bagved synkroniseret.
+- **Ydelse**: grafer oprettes først, når de er inden for 300 px af skærmen, og ødelægges, når de forsvinder
+  (`showCharts`, IntersectionObserver). Kun `.chart > canvas` er grafer; sliderens oversigt er også et canvas.
 
 ## Kør
 
@@ -39,8 +75,12 @@ Kun Pythons standardbibliotek bruges; der skal ikke installeres pakker.
 ## Test
 
 ```bash
-python3 -m unittest discover tests
+python3 -m unittest discover tests     # Python: katalog, hentning, beregninger
+node --test tests/js/*.test.js          # JavaScript: lib.js (URL, Sammenlign-valg, søgning)
 ```
+
+Node er installeret med Homebrew; testene bruger kun Nodes indbyggede test-runner (ingen npm-pakker).
+GitHub Actions kører begge.
 
 ## Struktur
 
@@ -50,9 +90,10 @@ python3 -m unittest discover tests
 | `events.py` | ECB- og Fed-mødedatoer (manuel liste med kilder) og kalenderlogik |
 | `fetch_data.py` | Henter serier fra hver kilde, recessioner (USREC) og Eurostats udgivelseskalender; skriver `data/data.js` |
 | `transforms.py` | Beregninger: år-over-år, spreads, ændringer, percentil, z-score, ugebevægelse, recessionsperioder |
-| `index.html`, `style.css`, `app.js`, `favicon.svg` | Selve dashboardet (Chart.js fra CDN). URL'en (`#europe?range=10`) er eneste kilde til tilstand |
+| `lib.js` | Ren logik uden DOM (URL-tilstand, Sammenlign-valg, søgematch); indlæses før `app.js` og testes med Node |
+| `index.html`, `style.css`, `app.js`, `favicon.svg` | Selve dashboardet (Chart.js + zoom-plugin fra CDN med SRI) |
 | `data/data.js` | Genereret data: `window.MACRO_DATA = {...}`. Committes kun af GitHub Actions-botten |
-| `tests/` | Unit tests (unittest) |
+| `tests/` | Python-tests (unittest), `tests/js/` (Node) og `tests/fixtures/` (lille Pink Sheet-xlsx + scriptet, der laver den) |
 
 ## Datakilder
 
@@ -76,6 +117,10 @@ python3 -m unittest discover tests
   - `QNA`: BNP-vækst år/år `GY` for Kina og Indien
 - Eurostat for HICP, kerne-HICP, ledighed og BNP for DE, FR, DK, NO og SE (`geo=..`); ECB for valuta over for EUR
 - Danmarks Statistik (inkl. Nationalbankens tal) – `api.statbank.dk/v1`
+- FRED's IMF-råvarepriser (månedlige, fx `PALUMUSDM`, `PNGASJPUSDM`, `PIORECRUSDM`) og råvareindeks
+  (`PALLFNFINDEXM`, `PNRGINDEXM`, `PMETAINDEXM`, `PFOODINDEXM`, 2016 = 100). Kaffe og sukker er i US cents/lb, uran i USD/lb.
+- Verdensbankens Pink Sheet (`worldbank`, forespørgsel = kolonneoverskrift, fx `"Gold"`): guld, sølv og platin,
+  som FRED ikke længere har. Månedlig xlsx, læst med `zipfile` + `xml.etree`.
 - Japans finansministerium (`mof`) – JGB-rentekurven 1–40 år, dagligt: `historical/jgbcme_all.csv` + `jgbcme.csv`
 
 ## Vigtige beslutninger
@@ -87,8 +132,9 @@ python3 -m unittest discover tests
 ## GitHub og automatisk opdatering
 
 - Repo: https://github.com/SoLl1XZ/Macro-Dashboard (offentligt). Siden: https://soll1xz.github.io/Macro-Dashboard/
-- `.github/workflows/update.yml` kører kl. 06:00 UTC, ved push til `main` og manuelt (`gh workflow run update.yml`):
-  tests → `fetch_data.py` → commit af `data/data.js` → publicering af `index.html`, `app.js`, `style.css`, `favicon.svg`, `data/` til Pages.
+- `.github/workflows/update.yml` kører kl. 06:17 UTC (ikke på hel time, som GitHub ofte springer over), ved push til
+  `main` og manuelt (`gh workflow run update.yml`): Python- og JS-tests → `fetch_data.py` → commit af `data/data.js` →
+  publicering af `index.html`, `lib.js`, `app.js`, `style.css`, `favicon.svg`, `data/` til Pages.
 - Commits bruger noreply-adressen `222303744+SoLl1XZ@users.noreply.github.com` (sat i repoets lokale git-config), aldrig gmail.
 - Spørg altid før `git push`. Hent bot-commits med `git pull` før lokale ændringer.
 - Commit aldrig en lokalt genereret `data/data.js` (konflikt med botten). Kassér den før pull: `git restore data/data.js`.
@@ -136,3 +182,9 @@ python3 -m unittest discover tests
 - **"Forældet" er generelle grænser pr. frekvens:** BIS' kreditdata udkommer ca. 2 kvartaler forsinket og markeres derfor
   som forældede, selvom det er normalt. Ugens bevægelser tæller kun serier med data fra de seneste 7 dage.
 - **Ingen to y-akser** (heller ikke i Sammenlign): forskellige enheder vises som to grafer, eller begge omregnes til indeks 100.
+  Valuta i Sammenlign vises som indeks 100 og som noteret (USD/XXX stiger, når valutaen svækkes; EUR/USD og GBP/USD omvendt).
+- **Pink Sheet:** linket til `CMO-Historical-Data-Monthly.xlsx` indeholder en hash, der skifter med hver årgang,
+  så det findes på `worldbank.org/en/research/commodity-markets` ved hver kørsel. "…" = ingen pris.
+- **Lokale browsertests:** i et skjult browserpanel kører hverken `requestAnimationFrame` eller IntersectionObserver,
+  så lazy grafer bliver ikke oprettet der. Det er ikke en fejl i siden.
+- **Browserværktøjets taster:** "slash" og "Page_Down" sender en tom tast; brug "PageDown", og test "/" med en syntetisk hændelse.
