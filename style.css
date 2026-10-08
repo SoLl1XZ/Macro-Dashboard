@@ -624,11 +624,14 @@ main {
   border-radius: var(--radius);
 }
 
+/* A long title pushes the unit and the full-screen button onto a line of their own,
+   instead of being squeezed into a narrow column next to them. */
 .card-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: 4px 8px;
 }
 
 .card-title {
@@ -691,6 +694,7 @@ main {
   flex: none;
   align-items: center;
   gap: 4px;
+  margin-left: auto; /* stays on the right, also on a line of its own */
 }
 
 .icon-button {
@@ -1294,6 +1298,15 @@ main {
 .card { scroll-margin-top: 172px; }
 
 /* ------------------------------------------------------------------- phones */
+
+/* The narrowest phones (320px): a change may break between number and unit
+   ("+0,50" / "%-point"), so the series table fits the card. */
+@media (max-width: 360px) {
+  .series-table .num {
+    padding-left: 8px;
+    white-space: normal;
+  }
+}
 
 @media (max-width: 600px) {
   /* A sticky header would take a fifth of a phone screen; let it scroll away. */

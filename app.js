@@ -21,7 +21,9 @@ function formatNumber(value, decimals) {
 function changeUnit(panel) {
   if (panel.change === "pct") return " %";
   // A change in a percentage (a rate, a growth rate, a spread) is measured in %-points.
-  return panel.unit.includes("%") ? " %-point" : "";
+  // A non-breaking hyphen (U+2011): on a narrow screen the line may break before the unit,
+  // never inside it ("%-" / "point").
+  return panel.unit.includes("%") ? " %\u2011point" : "";
 }
 
 function changeDecimals(change, panel) {
