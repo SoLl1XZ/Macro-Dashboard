@@ -1312,6 +1312,19 @@ main {
   }
 }
 
+/* The tabs need about 790px. Narrower, they scroll sideways instead of making the page
+   wider, and the countries are reached through the row of chips under the tabs: the
+   scrolling list would clip a fold-out menu. */
+@media (max-width: 820px) {
+  .tab-list {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .region-menu,
+  .chevron { display: none; }
+}
+
 @media (max-width: 600px) {
   /* A sticky header would take a fifth of a phone screen; let it scroll away. */
   .topbar { position: static; }
@@ -1352,16 +1365,8 @@ main {
     gap: 2px;
   }
 
-  /* Nothing to hover on a phone: the tabs scroll sideways, and the countries are
-     reached through the row of chips, which wraps into thumb-sized buttons. */
-  .tab-list {
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .region-menu,
-  .chevron { display: none; }
-
+  /* Nothing to hover on a phone: the countries are reached through the row of chips,
+     which wraps into thumb-sized buttons. */
   .subtab {
     min-height: 44px;
     display: inline-flex;

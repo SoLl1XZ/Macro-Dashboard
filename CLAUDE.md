@@ -192,7 +192,8 @@ GitHub Actions kører begge.
 - **Menuen:**
   - Fanerne genopbygges ved hver navigation. Tastaturfokus flyttes derfor tilbage (`restoreNavFocus`).
   - En lukket menu er `inert`, ellers kan Tab nå dens links, mens de fader ud.
-  - Under 600 px er hover-menuen slået fra, og landerækken bruges.
+  - Under 820 px scroller fanerne sidelæns, hover-menuen er slået fra, og landerækken bruges. Med 8 faner kræver
+    menuen 786 px (741 px uden pilene). Tilføjes en fane, så mål menuens bredde og flyt grænsen i `style.css`.
 - **Browser-cache ved lokal test:** `python3 -m http.server` får browseren til at genbruge gammel `style.css`/`app.js`. Hent dem med `fetch(fil, {cache: "reload"})` før `location.reload()`.
 - **"Forældet" er generelle grænser pr. frekvens** (`MAX_AGE_DAYS`). En kilde, der altid er langsommere, får sin egen
   grænse med `S(..., max_age_days=365)` (BIS' kreditdata, IMF's kvartals-BNP for Malaysia). Ugens bevægelser tæller kun

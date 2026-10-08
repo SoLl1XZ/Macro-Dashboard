@@ -2039,7 +2039,7 @@ function renderTabs(activeId) {
   restoreNavFocus(remembered);
 }
 
-// On a phone the tabs scroll sideways; centre the active one so it is always in view.
+// Below 820px the tabs scroll sideways; centre the active one so it is always in view.
 function scrollToActiveTab(list) {
   const activeTab = list.querySelector('.tab[aria-current="page"], .tab.is-active');
   if (!activeTab) return;
