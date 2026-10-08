@@ -32,6 +32,11 @@ class CatalogTest(unittest.TestCase):
             else:
                 self.assertIn(s.transform, {None, "yoy", "diff"}, s.key)
 
+    def test_sections_are_in_the_agreed_tab_order(self):
+        # The page adds Signaler in front and Sammenlign at the end of these.
+        self.assertEqual([section_id for section_id, _ in SECTIONS],
+                         ["global", "us", "europe", "denmark", "asia", "china", "japan", "korea"])
+
     def test_panels_of_a_group_are_adjacent(self):
         # The page starts a new sub-heading whenever the group changes, so a group split
         # by another group would show its heading twice.
