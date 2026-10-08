@@ -61,8 +61,10 @@ class CatalogTest(unittest.TestCase):
             with self.subTest(panel=panel.id, ref=ref.key):
                 self.assertIn(ref.key, owner_by_key)
                 # The page shows the owner's 1-month and 1-year changes, which are computed
-                # as differences or as percent changes depending on the panel.
-                self.assertEqual(owner_by_key[ref.key].change, panel.change)
+                # as differences or as percent changes depending on the panel. A split panel
+                # formats each series on its own, with its owner's change type.
+                if not panel.split:
+                    self.assertEqual(owner_by_key[ref.key].change, panel.change)
 
     def test_derived_series_use_fetched_series_as_input(self):
         fetched_keys = {s.key for s in ALL_SERIES if s.source != "derived"}
@@ -76,7 +78,7 @@ class CommoditiesTest(unittest.TestCase):
 
     def test_groups_come_in_the_agreed_order(self):
         groups = list(dict.fromkeys(panel.group for panel in self.PANELS))
-        self.assertEqual(groups, ["Indeks", "Energi", "Industrimetaller", "Ædelmetaller", "Landbrug"])
+        self.assertEqual(groups, ["Indeks", "Energi", "Industrimetaller", "Ædelmetaller", "Landbrug", "Analyse"])
 
     def test_prices_change_in_percent(self):
         for panel in self.PANELS:

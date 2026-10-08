@@ -70,13 +70,17 @@ function periodLabel(series) {
 function resolveReferences() {
   const owned = new Map();
   for (const panel of DATA.panels) {
-    for (const series of panel.series) if (!series.ref) owned.set(series.key, series);
+    for (const series of panel.series) if (!series.ref) owned.set(series.key, { series, panel });
   }
   for (const panel of DATA.panels) {
     panel.series = panel.series.map(series => {
       if (!series.ref) return series;
       const owner = owned.get(series.ref);
-      if (owner) return { ...owner, label: series.label, isReference: true };
+      if (owner) {
+        // The owner's unit and change type travel along, for split cards (one chart per series).
+        const { unit, change, decimals } = owner.panel;
+        return { ...owner.series, label: series.label, isReference: true, unit, change, decimals };
+      }
       // Only a broken catalog gets here (a test guards against it): show it as missing data.
       return {
         key: series.ref, label: series.label, source: "", sourceUrl: null, frequency: null,
@@ -85,6 +89,21 @@ function resolveReferences() {
       };
     });
   }
+}
+
+// How one series of a panel is formatted and drawn. In a split card every series has its own
+// chart in its own unit; a referenced series brings its owner's unit and change type.
+function seriesPanel(panel, series) {
+  if (!panel.split) return panel;
+  return {
+    ...panel,
+    title: series.label,
+    unit: series.unit ?? panel.unit,
+    change: series.change ?? panel.change,
+    decimals: series.decimals ?? panel.decimals,
+    referenceLines: [],
+    series: [series],
+  };
 }
 
 // Signals only count a panel where its headline series is owned, so a series shown in
@@ -187,9 +206,10 @@ function renderSeriesTable(panel) {
       nameText.append(el("span", "period-inline", periodText));
       const period = el("td", "num period", periodText);
       if (note) period.title = note;
+      const format = seriesPanel(panel, series);
       row.append(
-        el("td", "num", formatNumber(last, panel.decimals)),
-        el("td", "num", change1y === null ? "–" : formatChange(change1y, panel)),
+        el("td", "num", formatNumber(last, format.decimals)),
+        el("td", "num", change1y === null ? "–" : formatChange(change1y, format)),
         period,
       );
     } else {
@@ -332,7 +352,9 @@ function renderCard(panel) {
   const head = el("header", "card-head");
   head.append(el("h3", "card-title", panel.title), el("span", "card-unit", panel.unit));
   card.append(head, el("p", "card-desc", panel.description), renderHeadline(panel));
-  if (panel.series.some(series => series.data.length > 0)) card.append(renderChartSlot(panel));
+  if (panel.series.some(series => series.data.length > 0)) {
+    card.append(panel.split ? renderSplitCharts(panel) : renderChartSlot(panel));
+  }
   if (panel.series.length > 1) card.append(renderSeriesTable(panel));
   const notes = renderNotes(panel);
   if (notes) card.append(notes);
@@ -519,7 +541,8 @@ function tooltipOptions(panel) {
 function buildDatasets(panel) {
   const surface = cssVar("--surface");
   return panel.series.map((series, index) => {
-    const color = cssVar(`--series-${index + 1}`);
+    // A split card's charts continue the card's colour order, matching its series table.
+    const color = cssVar(`--series-${index + 1 + (panel.colorOffset ?? 0)}`);
     const forecastStart = series.forecastFrom ? Date.parse(series.forecastFrom) : null;
     return {
       label: series.label,
@@ -563,6 +586,7 @@ function chartOptions(panel) {
       x: {
         type: "time",
         min: rangeStart(rangeYears),
+        max: panel.xMax, // a split card's charts end on the same date, so they line up
         time: { unit: timeUnit(rangeYears) },
         grid: { display: false },
         border: { color: zeroLineColor },
@@ -584,13 +608,29 @@ function chartOptions(panel) {
   };
 }
 
-function renderChartSlot(panel) {
-  const slot = el("div", "chart");
+function renderChartSlot(panel, className = "chart") {
+  const slot = el("div", className);
   const canvas = el("canvas");
   canvas.setAttribute("role", "img");
   canvas.setAttribute("aria-label", `Graf: ${panel.title}`);
+  canvas.chartPanel = panel; // what to draw, read when the chart is created
   slot.append(canvas);
   return slot;
+}
+
+// One small chart per series, stacked on a shared time axis: series in different units
+// (a ratio and a rate, a price and an exchange rate) never share a y-axis.
+function renderSplitCharts(panel) {
+  const box = el("div", "split-charts");
+  const latest = Math.max(...panel.series.filter(series => series.data.length)
+    .map(series => Date.parse(series.data.at(-1)[0])));
+  panel.series.forEach((series, index) => {
+    if (series.data.length === 0) return;
+    const part = { ...seriesPanel(panel, series), xMax: latest, colorOffset: index };
+    const label = el("p", "split-label", part.unit ? `${series.label} (${part.unit})` : series.label);
+    box.append(label, renderChartSlot(part, "chart chart-split"));
+  });
+  return box;
 }
 
 function createChart(canvas, panel) {
@@ -1143,15 +1183,13 @@ function renderSection(sectionId) {
   document.getElementById("panels").replaceChildren(...children);
 
   // Charts are created after the cards are in the page: Chart.js needs their size.
-  panels.forEach((panel, index) => {
-    const canvas = cards[index].querySelector("canvas");
-    if (!canvas) return;
+  for (const canvas of document.querySelectorAll("#panels canvas")) {
     if (typeof Chart === "undefined") {
       canvas.parentElement.replaceWith(el("p", "error-text", "⚠ Grafbiblioteket kunne ikke indlæses (ingen internetforbindelse?)"));
-      return;
+      continue;
     }
-    activeCharts.push(createChart(canvas, panel));
-  });
+    activeCharts.push(createChart(canvas, canvas.chartPanel));
+  }
 }
 
 function route() {

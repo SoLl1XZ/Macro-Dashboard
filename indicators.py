@@ -109,6 +109,9 @@ class Panel:
     group: str | None = None
     # Horizontal reference lines as (value, label), e.g. an inflation target.
     reference_lines: tuple[tuple[float, str], ...] = ()
+    # Draw each series in its own chart (same time axis), for series in different units:
+    # never two y-axes. A referenced series keeps its owner's unit and change type.
+    split: bool = False
 
 
 # Euro area recessions as (peak quarter, trough quarter) from the CEPR-EABCN Business Cycle
@@ -306,6 +309,29 @@ PANELS: list[Panel] = [
           "Råsukker på verdensmarkedet (kontrakt nr. 11), i amerikanske cent pr. pund.",
           (S("sugar", "Sukker", "fred", "PSUGAISAUSDM"),), change="pct",
           group="Landbrug"),
+    Panel("real_oil", "commodities", "Real oliepris (Brent)", "USD/tønde",
+          "Brent omregnet til seneste måneds dollar med det amerikanske forbrugerprisindeks, så priser "
+          "fra forskellige år kan sammenlignes. Den nominelle pris til sammenligning (månedlige gennemsnit).",
+          (S("brent_real", "Real (dagens dollar)", "derived", ("brent_m", "us_cpi_index"), "real"),
+           S("brent_m", "Nominel", "fred", "POILBREUSDM")), change="pct",
+          group="Analyse"),
+    Panel("copper_gold", "commodities", "Kobber/guld-forhold og US 10-årig rente", "oz guld pr. ton kobber",
+          "Kobber følger industrien og væksten, guld efterspørges i usikre tider. Forholdet bruges derfor "
+          "som vækstindikator og sammenlignes ofte med den amerikanske 10-årige rente: stiger begge, "
+          "venter markedet mere vækst. Vist som to grafer med fælles tidsakse.",
+          (S("copper_gold", "Kobber/guld", "derived", ("copper", "gold"), "ratio"),
+           R("us_10y_m", "US 10-årig rente")), change="pct", split=True,
+          group="Analyse"),
+    Panel("brent_nok", "commodities", "Brent og norske kroner", "",
+          "Norge eksporterer olie og gas, så kronen styrkes ofte, når olien stiger. Så falder USD/NOK "
+          "(færre kroner pr. dollar).",
+          (R("brent", "Brent"), R("usdnok", "USD/NOK")), change="pct", split=True,
+          group="Analyse"),
+    Panel("wti_cad", "commodities", "WTI og canadiske dollar", "",
+          "Canada eksporterer olie, så den canadiske dollar styrkes ofte, når olien stiger. Så falder "
+          "USD/CAD (færre canadiske dollar pr. amerikansk dollar).",
+          (R("wti", "WTI"), R("usdcad", "USD/CAD")), change="pct", split=True,
+          group="Analyse"),
 
     # ------------------------------------------------------------- NORDAMERIKA
     # The overview only refers to series that the USA and Canada tabs own.

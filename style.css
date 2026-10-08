@@ -440,6 +440,21 @@ main {
   height: 180px;
 }
 
+/* A split card: one smaller chart per series, each under its own label and unit. */
+.split-charts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.split-label {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.chart-split { height: 130px; }
+
 .series-table {
   width: 100%;
   border-collapse: collapse;
