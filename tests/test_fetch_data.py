@@ -92,8 +92,8 @@ class ApplyTransformsTest(unittest.TestCase):
         self.assertEqual(errors, {})
 
     def test_spread_with_failed_input_becomes_an_error(self):
-        it = Series("it", "Italien", "oecd_lt", "ITA")
-        de = Series("de", "Tyskland", "oecd_lt", "DEU")
+        it = Series("it", "Italien", "oecd", "FINMARK/IRLT/ITA")
+        de = Series("de", "Tyskland", "oecd", "FINMARK/IRLT/DEU")
         it_de = Series("it_de", "IT − DE", "derived", ("it", "de"), "spread")
         processed, errors = apply_transforms(
             [it, de, it_de], {"it": [("2026-01-01", 4.0)]}, {"de": "TimeoutError: x"})
