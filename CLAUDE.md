@@ -132,7 +132,8 @@ GitHub Actions kører begge.
 ## GitHub og automatisk opdatering
 
 - Repo: https://github.com/SoLl1XZ/Macro-Dashboard (offentligt). Siden: https://soll1xz.github.io/Macro-Dashboard/
-- `.github/workflows/update.yml` kører kl. 06:17 UTC (ikke på hel time, som GitHub ofte springer over), ved push til
+- `.github/workflows/update.yml` kører kl. 06:17 UTC (ikke på hel time, som GitHub ofte springer over eller udsætter:
+  06:00-kørslen den 8. oktober startede først 12:21), ved push til
   `main` og manuelt (`gh workflow run update.yml`): Python- og JS-tests → `fetch_data.py` → commit af `data/data.js` →
   publicering af `index.html`, `lib.js`, `app.js`, `style.css`, `favicon.svg`, `data/` til Pages.
 - Commits bruger noreply-adressen `222303744+SoLl1XZ@users.noreply.github.com` (sat i repoets lokale git-config), aldrig gmail.
@@ -179,8 +180,18 @@ GitHub Actions kører begge.
   - En lukket menu er `inert`, ellers kan Tab nå dens links, mens de fader ud.
   - Under 600 px er hover-menuen slået fra, og landerækken bruges.
 - **Browser-cache ved lokal test:** `python3 -m http.server` får browseren til at genbruge gammel `style.css`/`app.js`. Hent dem med `fetch(fil, {cache: "reload"})` før `location.reload()`.
-- **"Forældet" er generelle grænser pr. frekvens:** BIS' kreditdata udkommer ca. 2 kvartaler forsinket og markeres derfor
-  som forældede, selvom det er normalt. Ugens bevægelser tæller kun serier med data fra de seneste 7 dage.
+- **"Forældet" er generelle grænser pr. frekvens** (`MAX_AGE_DAYS`). En kilde, der altid er langsommere, får sin egen
+  grænse med `S(..., max_age_days=365)` (BIS' kreditdata, IMF's kvartals-BNP for Malaysia). Ugens bevægelser tæller kun
+  serier med data fra de seneste 7 dage.
+- **Netværk:** `http_get` prøver igen ved timeout, afbrudt forbindelse (`RemoteDisconnected`), afkortet svar
+  (`IncompleteRead`), 429 og 5xx. En 4xx betyder en forkert forespørgsel og prøves ikke igen, undtagen FRED: den kan
+  svare 404 for en serie, der findes (set fra GitHubs servere 2026-10-08), så `fetch_fred` prøver en 404 én gang mere
+  (`retry_not_found`).
+- **Y-aksen:** `maxTicksLimit: 8`. Med færre springer Chart.js til et groft trin, og akser bliver halvtomme
+  (JGB: −2 til 6 for data mellem −0,13 og 4,17). Mål på alle grafer efter ændringer: data skal fylde mindst 60 % af aksen.
+- **Panel-anker ved genindlæsning:** med `panel=` i URL'en sættes `history.scrollRestoration = "manual"`, ellers lægger
+  browseren sin gamle scrollposition oven på scroll til panelet.
+- **Smalle telefoner (320 px):** ændringer kan brydes mellem tal og enhed; "%‑point" har en ikke-brydende bindestreg (U+2011).
 - **Ingen to y-akser** (heller ikke i Sammenlign): forskellige enheder vises som to grafer, eller begge omregnes til indeks 100.
   Valuta i Sammenlign vises som indeks 100 og som noteret (USD/XXX stiger, når valutaen svækkes; EUR/USD og GBP/USD omvendt).
 - **Pink Sheet:** linket til `CMO-Historical-Data-Monthly.xlsx` indeholder en hash, der skifter med hver årgang,
