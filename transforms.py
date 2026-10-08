@@ -46,6 +46,24 @@ def spread(a: list[Observation], b: list[Observation]) -> list[Observation]:
     return [(d, value - b_by_date[d]) for d, value in a if d in b_by_date]
 
 
+def ratio(a: list[Observation], b: list[Observation]) -> list[Observation]:
+    """a divided by b, on the dates where both series have a value, e.g. copper/gold."""
+    b_by_date = dict(b)
+    return [(d, value / b_by_date[d]) for d, value in a if b_by_date.get(d)]
+
+
+def in_latest_prices(nominal: list[Observation], price_index: list[Observation]) -> list[Observation]:
+    """Nominal values restated in the prices of the index's latest month ("today's dollars").
+
+    A value from a month when the index was half today's level counts double.
+    """
+    if not price_index:
+        return []
+    latest = price_index[-1][1]
+    index_by_date = dict(price_index)
+    return [(d, value * latest / index_by_date[d]) for d, value in nominal if index_by_date.get(d)]
+
+
 def observation_at_or_before(obs: list[Observation], target: str) -> Observation | None:
     dates = [d for d, _ in obs]
     index = bisect.bisect_right(dates, target)

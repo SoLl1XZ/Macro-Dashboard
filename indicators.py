@@ -15,7 +15,8 @@ Query format per source:
     imf_qnea  IMF quarterly real GDP, country      "MYS"
     oecd      OECD dataflow/measure/country        "FINMARK/IRLT/DEU" (see OECD_DATAFLOWS)
     statbank  Statistics Denmark table?filters     "AUS08?OMRÅDE=000&SAESONFAK=9"
-    derived   computed from other series           ("it_10y", "de_10y")
+    worldbank Pink Sheet column header             "Gold"
+    derived   computed from other series           ("fr_10y", "de_10y")
 """
 
 from dataclasses import dataclass
@@ -76,7 +77,8 @@ class Series:
     source: str
     query: str | tuple[str, str]
     # None = use as delivered; "yoy" = % change vs. same period last year;
-    # "diff" = change vs. previous observation; "spread" = a - b in %-points.
+    # "diff" = change vs. previous observation. Derived series: "spread" = a - b in
+    # %-points, "ratio" = a / b, "real" = a in the prices of b's latest month.
     transform: str | None = None
 
 
@@ -129,6 +131,13 @@ def S(key: str, label: str, source: str, query, transform: str | None = None) ->
 
 def R(key: str, label: str) -> Ref:
     return Ref(key, label)
+
+
+# Series that are fetched only as input to derived series, never shown on their own.
+INPUT_SERIES: list[Series] = [
+    # The CPI level (not its growth, which us_cpi shows) turns prices into today's dollars.
+    S("us_cpi_index", "USA: forbrugerprisindeks", "fred", "CPIAUCSL"),
+]
 
 
 def owned_series(panels: list[Panel]) -> list[Series]:

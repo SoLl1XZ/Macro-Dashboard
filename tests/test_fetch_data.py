@@ -91,6 +91,17 @@ class ApplyTransformsTest(unittest.TestCase):
         self.assertAlmostEqual(processed["cpi"][0][1], 3.0)
         self.assertEqual(errors, {})
 
+    def test_ratio_and_real_price_are_computed_from_their_inputs(self):
+        oil = Series("oil", "Olie", "fred", "OIL")
+        cpi = Series("cpi", "CPI-niveau", "fred", "CPI")
+        oil_cpi = Series("oil_cpi", "Olie/CPI", "derived", ("oil", "cpi"), "ratio")
+        real_oil = Series("real_oil", "Real olie", "derived", ("oil", "cpi"), "real")
+        observations = {"oil": [("2000-01-01", 25.0), ("2026-01-01", 80.0)],
+                        "cpi": [("2000-01-01", 170.0), ("2026-01-01", 340.0)]}
+        processed, _ = apply_transforms([oil, cpi, oil_cpi, real_oil], observations, {})
+        self.assertAlmostEqual(processed["oil_cpi"][1][1], 80.0 / 340.0)
+        self.assertEqual(processed["real_oil"], [("2000-01-01", 50.0), ("2026-01-01", 80.0)])
+
     def test_spread_with_failed_input_becomes_an_error(self):
         it = Series("it", "Italien", "oecd", "FINMARK/IRLT/ITA")
         de = Series("de", "Tyskland", "oecd", "FINMARK/IRLT/DEU")

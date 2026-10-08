@@ -2,9 +2,9 @@ import math
 import unittest
 from datetime import date, timedelta
 
-from transforms import (change_since, difference, infer_frequency, is_stale, peak_trough_periods,
-                        percentile_rank, recession_periods, shift_months, spread, summarize,
-                        thin_before, weekly_move, year_over_year, z_score)
+from transforms import (change_since, difference, in_latest_prices, infer_frequency, is_stale,
+                        peak_trough_periods, percentile_rank, ratio, recession_periods, shift_months,
+                        spread, summarize, thin_before, weekly_move, year_over_year, z_score)
 
 
 def monthly(start_year: int, values: list[float]) -> list[tuple[str, float]]:
@@ -48,6 +48,24 @@ class SpreadTest(unittest.TestCase):
         a = [("2026-01-01", 4.0), ("2026-02-01", 4.5), ("2026-03-01", 5.0)]
         b = [("2026-01-01", 3.0), ("2026-03-01", 3.5)]
         self.assertEqual(spread(a, b), [("2026-01-01", 1.0), ("2026-03-01", 1.5)])
+
+
+class RatioTest(unittest.TestCase):
+    def test_only_dates_present_in_both_and_never_divides_by_zero(self):
+        copper = [("2026-01-01", 9000.0), ("2026-02-01", 9900.0), ("2026-03-01", 9500.0)]
+        gold = [("2026-01-01", 3000.0), ("2026-02-01", 0.0)]
+        self.assertEqual(ratio(copper, gold), [("2026-01-01", 3.0)])
+
+
+class InLatestPricesTest(unittest.TestCase):
+    def test_older_prices_are_scaled_up_to_todays_price_level(self):
+        oil = [("2000-01-01", 25.0), ("2026-01-01", 80.0)]
+        cpi = [("2000-01-01", 170.0), ("2026-01-01", 340.0)]  # prices have doubled
+        self.assertEqual(in_latest_prices(oil, cpi), [("2000-01-01", 50.0), ("2026-01-01", 80.0)])
+
+    def test_months_without_an_index_value_are_left_out(self):
+        self.assertEqual(in_latest_prices([("2026-02-01", 80.0)], [("2026-01-01", 340.0)]), [])
+        self.assertEqual(in_latest_prices([("2026-02-01", 80.0)], []), [])
 
 
 class ChangeSinceTest(unittest.TestCase):

@@ -18,11 +18,11 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from events import calendar_warnings, upcoming_events
-from indicators import (EURO_AREA_PEAKS_AND_TROUGHS, PANELS, RECESSIONS_BY_SECTION, SECTIONS,
-                        Panel, Series, owned_series)
-from transforms import (Observation, difference, infer_frequency, is_stale, peak_trough_periods,
-                        recession_periods, shift_months, spread, summarize, thin_before,
-                        year_over_year)
+from indicators import (EURO_AREA_PEAKS_AND_TROUGHS, INPUT_SERIES, PANELS, RECESSIONS_BY_SECTION,
+                        SECTIONS, Panel, Series, owned_series)
+from transforms import (Observation, difference, in_latest_prices, infer_frequency, is_stale,
+                        peak_trough_periods, ratio, recession_periods, shift_months, spread,
+                        summarize, thin_before, year_over_year)
 
 Batch = dict[str, list[Observation]]  # query -> observations
 
@@ -499,8 +499,15 @@ def apply_transforms(all_series: list[Series], observations: dict[str, list[Obse
         missing = [key for key in s.query if key not in processed]
         if missing:
             errors[s.key] = f"Missing input: {', '.join(missing)}"
-        else:
-            processed[s.key] = spread(processed[s.query[0]], processed[s.query[1]])
+            continue
+        a, b = processed[s.query[0]], processed[s.query[1]]
+        match s.transform:
+            case "spread":
+                processed[s.key] = spread(a, b)
+            case "ratio":
+                processed[s.key] = ratio(a, b)
+            case "real":
+                processed[s.key] = in_latest_prices(a, b)
     return processed, errors
 
 
@@ -680,7 +687,7 @@ def write_data_js(payload: dict, path: Path) -> None:
 
 def main() -> int:
     today = date.today().isoformat()
-    all_series = owned_series(PANELS)
+    all_series = owned_series(PANELS) + INPUT_SERIES
     print("Fetching...")
     observations, failures = fetch_all(all_series)
     if "--verbose" in sys.argv:

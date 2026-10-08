@@ -4,7 +4,7 @@ import unittest
 from collections import Counter
 
 from fetch_data import BATCH_FETCHERS, SINGLE_FETCHERS
-from indicators import CORE_GROUP, CORE_TITLES, PANELS, SECTIONS, Ref, owned_series
+from indicators import CORE_GROUP, CORE_TITLES, INPUT_SERIES, PANELS, SECTIONS, Ref, owned_series
 
 COUNTRIES_BY_REGION = {
     "north-america": ["us", "canada"],
@@ -12,7 +12,8 @@ COUNTRIES_BY_REGION = {
     "asia": ["china", "japan", "korea", "thailand", "vietnam", "indonesia", "malaysia", "india"],
 }
 
-ALL_SERIES = owned_series(PANELS)
+# Input-only series count too: their keys must not clash, and derived series may use them.
+ALL_SERIES = owned_series(PANELS) + INPUT_SERIES
 ALL_REFS = [(panel, s) for panel in PANELS for s in panel.series if isinstance(s, Ref)]
 KNOWN_SOURCES = set(SINGLE_FETCHERS) | set(BATCH_FETCHERS) | {"derived"}
 
@@ -35,7 +36,7 @@ class CatalogTest(unittest.TestCase):
     def test_transforms_are_known(self):
         for s in ALL_SERIES:
             if s.source == "derived":
-                self.assertEqual(s.transform, "spread", s.key)
+                self.assertIn(s.transform, {"spread", "ratio", "real"}, s.key)
             else:
                 self.assertIn(s.transform, {None, "yoy", "diff"}, s.key)
 
