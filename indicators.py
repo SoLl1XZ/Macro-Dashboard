@@ -79,7 +79,8 @@ class Series:
     query: str | tuple[str, str]
     # None = use as delivered; "yoy" = % change vs. same period last year;
     # "diff" = change vs. previous observation. Derived series: "spread" = a - b in
-    # %-points, "ratio" = a / b, "real" = a in the prices of b's latest month.
+    # %-points, "ratio" = a / b, "real" = a in the prices of b's latest month, and from one
+    # input "drawdown" = % below the highest value so far.
     transform: str | None = None
     # Days the latest value may be old before the page calls it stale, for a source that is
     # always slower than its frequency's usual limit (see MAX_AGE_DAYS in transforms.py).

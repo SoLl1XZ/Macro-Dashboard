@@ -2,7 +2,7 @@ import math
 import unittest
 from datetime import date, timedelta
 
-from transforms import (change_since, difference, in_latest_prices, infer_frequency, is_stale,
+from transforms import (change_since, difference, drawdown, in_latest_prices, infer_frequency, is_stale,
                         peak_trough_periods, percentile_rank, ratio, recession_periods, shift_months,
                         spread, summarize, thin_before, weekly_move, year_over_year, z_score)
 
@@ -66,6 +66,15 @@ class InLatestPricesTest(unittest.TestCase):
     def test_months_without_an_index_value_are_left_out(self):
         self.assertEqual(in_latest_prices([("2026-02-01", 80.0)], [("2026-01-01", 340.0)]), [])
         self.assertEqual(in_latest_prices([("2026-02-01", 80.0)], []), [])
+
+
+class DrawdownTest(unittest.TestCase):
+    def test_percent_below_the_highest_value_so_far(self):
+        obs = monthly(2026, [100.0, 120.0, 90.0, 130.0])
+        self.assertEqual([value for _, value in drawdown(obs)], [0.0, 0.0, -25.0, 0.0])
+
+    def test_empty_series_has_no_drawdown(self):
+        self.assertEqual(drawdown([]), [])
 
 
 class ChangeSinceTest(unittest.TestCase):

@@ -64,6 +64,20 @@ def in_latest_prices(nominal: list[Observation], price_index: list[Observation])
     return [(d, value * latest / index_by_date[d]) for d, value in nominal if index_by_date.get(d)]
 
 
+def drawdown(obs: list[Observation]) -> list[Observation]:
+    """Percent below the highest value so far: 0 at a new top, -25 after a fall from 200 to 150.
+
+    Only the fetched history counts, so a top from before the first observation is not seen.
+    """
+    result = []
+    peak = None
+    for d, value in obs:
+        peak = value if peak is None else max(peak, value)
+        if peak > 0:
+            result.append((d, (value / peak - 1) * 100))
+    return result
+
+
 def observation_at_or_before(obs: list[Observation], target: str) -> Observation | None:
     dates = [d for d, _ in obs]
     index = bisect.bisect_right(dates, target)

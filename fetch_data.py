@@ -21,7 +21,7 @@ from pathlib import Path
 from events import calendar_warnings, upcoming_events
 from indicators import (EURO_AREA_PEAKS_AND_TROUGHS, INPUT_SERIES, PANELS, RECESSIONS_BY_SECTION,
                         SECTIONS, Panel, Series, owned_series)
-from transforms import (Observation, difference, in_latest_prices, infer_frequency, is_stale,
+from transforms import (Observation, difference, drawdown, in_latest_prices, infer_frequency, is_stale,
                         peak_trough_periods, ratio, recession_periods, shift_months, spread,
                         summarize, thin_before, year_over_year)
 
@@ -241,12 +241,15 @@ class PartialBatch(Exception):
 # e.g. "FINMARK/IRLT/DEU" for Germany's 10-year yield; the measure and the countries fill in
 # the template. Keys tested 2026-10-08.
 OECD_DATAFLOWS = {
-    "FINMARK": ("OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0", "{countries}.M.{measure}.PA....."),
+    "FINMARK": ("OECD.SDD.STES,DSD_STES@DF_FINMARK,4.0", "{countries}.M.{measure}.{unit}....."),
     "CLI": ("OECD.SDD.STES,DSD_STES@DF_CLI,4.1", "{countries}.M.{measure}.IX._Z.AA.IX._Z.H"),
     "PRICES": ("OECD.SDD.TPS,DSD_PRICES@DF_PRICES_ALL,1.0", "{countries}.M.N.CPI.PA.{measure}.N.GY"),
     "QNA": ("OECD.SDD.NAD,DSD_NAMAIN1@DF_QNA_EXPENDITURE_GROWTH_G20,1.1",
             "Q.Y.{countries}.S1.S1.B1GQ._Z._Z._Z.PC.L.{measure}.T0102"),
 }
+
+# The unit is part of FINMARK's key: the rates are in percent per annum, share prices an index.
+FINMARK_UNITS = {"SHARE": "IX"}
 
 
 def fetch_oecd(queries: list[str]) -> Batch:
@@ -264,7 +267,8 @@ def fetch_oecd(queries: list[str]) -> Batch:
     errors: dict[str, str] = {}
     for (dataflow, measure), countries in countries_by_measure.items():
         flow_id, key_template = OECD_DATAFLOWS[dataflow]
-        key = key_template.format(countries="+".join(countries), measure=measure)
+        key = key_template.format(countries="+".join(countries), measure=measure,
+                                  unit=FINMARK_UNITS.get(measure, "PA"))
         url = (f"https://sdmx.oecd.org/public/rest/data/{flow_id}/{key}"
                f"?startPeriod={FETCH_START[:7]}&dimensionAtObservation=AllDimensions"
                "&detail=dataonly&format=csvfile")
@@ -513,14 +517,16 @@ def apply_transforms(all_series: list[Series], observations: dict[str, list[Obse
         if missing:
             errors[s.key] = f"Missing input: {', '.join(missing)}"
             continue
-        a, b = processed[s.query[0]], processed[s.query[1]]
+        inputs = [processed[key] for key in s.query]
         match s.transform:
             case "spread":
-                processed[s.key] = spread(a, b)
+                processed[s.key] = spread(*inputs)
             case "ratio":
-                processed[s.key] = ratio(a, b)
+                processed[s.key] = ratio(*inputs)
             case "real":
-                processed[s.key] = in_latest_prices(a, b)
+                processed[s.key] = in_latest_prices(*inputs)
+            case "drawdown":
+                processed[s.key] = drawdown(*inputs)
     return processed, errors
 
 

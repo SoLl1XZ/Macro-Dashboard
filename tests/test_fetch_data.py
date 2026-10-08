@@ -103,6 +103,14 @@ class ApplyTransformsTest(unittest.TestCase):
         self.assertAlmostEqual(processed["oil_cpi"][1][1], 80.0 / 340.0)
         self.assertEqual(processed["real_oil"], [("2000-01-01", 50.0), ("2026-01-01", 80.0)])
 
+    def test_drawdown_is_computed_from_its_single_input(self):
+        index = Series("idx", "Indeks", "oecd", "FINMARK/SHARE/USA")
+        fall = Series("idx_dd", "Fald fra toppen", "derived", ("idx",), "drawdown")
+        observations = {"idx": [("2026-01-01", 200.0), ("2026-02-01", 150.0)]}
+        processed, errors = apply_transforms([index, fall], observations, {})
+        self.assertEqual(processed["idx_dd"], [("2026-01-01", 0.0), ("2026-02-01", -25.0)])
+        self.assertEqual(errors, {})
+
     def test_spread_with_failed_input_becomes_an_error(self):
         it = Series("it", "Italien", "oecd", "FINMARK/IRLT/ITA")
         de = Series("de", "Tyskland", "oecd", "FINMARK/IRLT/DEU")
@@ -283,6 +291,14 @@ class FetchOecdTest(unittest.TestCase):
         self.assertIn("DSD_STES@DF_CLI,4.1/DEU.M.CCICP.IX._Z.AA.IX._Z.H?", urls[1])
         self.assertEqual(batch["FINMARK/IRLT/FRA"], [("2026-08-01", 4.0)])
         self.assertEqual(batch["CLI/CCICP/DEU"], [("2026-09-01", 98.7)])
+
+    def test_share_prices_are_fetched_as_an_index(self):
+        # The unit is part of the key: FINMARK's rates are in percent (PA), share prices an index.
+        answer = "DATAFLOW,REF_AREA,FREQ,MEASURE,TIME_PERIOD,OBS_VALUE\nx,USA,M,SHARE,2026-09,226.1\n"
+        with mock.patch.object(fetch_data, "http_get", return_value=answer) as http_get:
+            batch = fetch_data.fetch_oecd(["FINMARK/SHARE/USA"])
+        self.assertIn("DSD_STES@DF_FINMARK,4.0/USA.M.SHARE.IX.....?", http_get.call_args.args[0])
+        self.assertEqual(batch["FINMARK/SHARE/USA"], [("2026-09-01", 226.1)])
 
     def test_country_missing_from_the_answer_gets_no_observations(self):
         with mock.patch.object(fetch_data, "http_get", return_value=self.CONFIDENCE):
