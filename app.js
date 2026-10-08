@@ -2089,6 +2089,9 @@ function focusPanel(panelId) {
 // `force` redraws anyway, e.g. when the colour scheme flips.
 function route(force = false) {
   const state = parseHash();
+  // With a panel anchor the page scrolls to the panel itself: on a reload the browser would
+  // otherwise put back its old scroll position afterwards. Without one, the browser may.
+  history.scrollRestoration = state.panel ? "manual" : "auto";
   const view = viewKey(state);
   const redraw = force || view !== shownView;
   if (redraw) {
