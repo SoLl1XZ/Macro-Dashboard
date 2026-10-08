@@ -103,6 +103,18 @@ test("search: every word must match, in any order and any case", () => {
   assert.deepEqual(names(""), []);
 });
 
+test("search: a word in a title or country outranks one in a series name", () => {
+  const documents = [
+    // Global's policy rates panel lists "Japan (BoJ)" as one of its series.
+    { name: "Global › Styringsrenter", words: lib.tokenize("Global Styringsrenter"),
+      seriesWords: lib.tokenize("USA (Fed) Japan (BoJ)"), order: 1 },
+    { name: "Japan › Statsrenter", words: lib.tokenize("Japan Asien Kernetal Statsrenter"),
+      seriesWords: lib.tokenize("10 år 2 år"), order: 2 },
+  ];
+  assert.deepEqual(lib.search("japan renter", documents).map(document => document.name),
+                   ["Japan › Statsrenter", "Global › Styringsrenter"]);
+});
+
 test("search: synonyms, typos and words in the middle", () => {
   assert.deepEqual(names("gold"), ["Råvarer › Guld"]);
   assert.deepEqual(names("unemployment denmark"), ["Danmark › Ledighed"]);

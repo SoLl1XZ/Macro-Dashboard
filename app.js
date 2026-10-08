@@ -655,8 +655,6 @@ const HEAT_LEGEND = [
   ["neg-strong", "Meget lavt"], ["neg-weak", "Lavt"], ["neutral", "Normalt"],
   ["pos-weak", "Højt"], ["pos-strong", "Meget højt"], ["none", "Ingen 10-års historik"],
 ];
-let scrollTargetPanelId = null; // set when a signal is clicked, used after the section renders
-let shownSectionId = null; // the tab currently on screen
 
 // The z-score bins of the heat scale: |z| < 0.5 is normal, beyond 1.5 is unusual.
 function heatLevel(z) {
@@ -682,9 +680,15 @@ function sectionTitle(sectionId) {
   return DATA.sections.find(section => section.id === sectionId)?.title ?? "";
 }
 
+// Opens a panel's tab, scrolled to the panel. The panel is in the URL, so the link can be shared.
 function goToPanel(panel) {
-  scrollTargetPanelId = panel.id;
-  location.hash = hashFor(panel.section, rangeYears);
+  showPanel(panel.section, panel.id);
+}
+
+function showPanel(sectionId, panelId) {
+  const hash = hashFor(sectionId, rangeYears, { panel: panelId });
+  if (location.hash === hash) focusPanel(panelId); // no hashchange when the URL is already there
+  else location.hash = hash;
 }
 
 function renderMovers() {
@@ -988,6 +992,162 @@ function renderCompare(params) {
   activeCharts.push(...created);
 }
 
+// --------------------------------------------------------------------------- search
+// A command palette (Ctrl/Cmd+K or "/"): type to find a tab or a panel, pick one with the
+// arrow keys and Enter. The matching itself (typos, synonyms, Danish letters) is in lib.js.
+
+const SEARCH_RESULTS_SHOWN = 12;
+let searchDocuments = [];
+let searchResults = [];
+let activeResult = 0;
+let searchOpener = null; // had the focus before the palette opened, and gets it back
+
+// The headline value; with several series it says whose ("Kina 0,80 % år/år" for Asia).
+function searchValueText(panel) {
+  const primary = panel.series[0];
+  if (!primary.summary) return "";
+  const format = seriesPanel(panel, primary);
+  const value = `${formatNumber(primary.summary.last, format.decimals)}${format.unit ? ` ${format.unit}` : ""}`;
+  return panel.series.length > 1 ? `${primary.label} ${value}` : value;
+}
+
+// One document per tab and per panel: its words are the titles, the series names, the
+// country, region and group, so "japan renter" or "ædelmetaller" find their panels.
+function buildSearchIndex() {
+  const sectionById = new Map(DATA.sections.map(section => [section.id, section]));
+  const entries = [];
+  for (const section of DATA.sections) {
+    const region = section.region ? sectionById.get(section.region) : null;
+    entries.push({
+      sectionId: section.id, panelId: null, path: [section.title], value: "Fane",
+      words: tokenize(`${section.title} ${region?.title ?? ""}`),
+    });
+  }
+  for (const panel of DATA.panels) {
+    const section = sectionById.get(panel.section);
+    const region = section?.region ? sectionById.get(section.region) : null;
+    const text = [panel.title, panel.group ?? "", section?.title ?? "", region?.title ?? ""].join(" ");
+    entries.push({
+      sectionId: panel.section, panelId: panel.id, path: [section?.title ?? "", panel.title],
+      value: searchValueText(panel), words: tokenize(text),
+      seriesWords: tokenize(panel.series.map(series => series.label).join(" ")),
+    });
+  }
+  // Tabs come first, so "japan" lists the Japan tab before its panels.
+  entries.forEach((entry, index) => { entry.order = index; });
+  return entries;
+}
+
+function renderSearchResult(result, index) {
+  const item = el("li", "search-result");
+  item.id = `search-result-${index}`;
+  item.setAttribute("role", "option");
+  const path = el("span", "search-path");
+  result.path.forEach((part, partIndex) => {
+    if (partIndex > 0) {
+      const separator = el("span", "search-separator", " › ");
+      separator.setAttribute("aria-hidden", "true");
+      path.append(separator);
+    }
+    path.append(el("span", partIndex === result.path.length - 1 ? "search-title" : "search-parent", part));
+  });
+  item.append(path, el("span", "search-value", result.value));
+  item.addEventListener("click", () => chooseSearchResult(index));
+  item.addEventListener("pointermove", () => {
+    if (activeResult !== index) setActiveResult(index);
+  });
+  return item;
+}
+
+function setActiveResult(index) {
+  activeResult = index;
+  const input = document.getElementById("search-input");
+  document.querySelectorAll(".search-result").forEach((item, itemIndex) => {
+    item.setAttribute("aria-selected", String(itemIndex === index));
+  });
+  const active = document.getElementById(`search-result-${index}`);
+  if (active) {
+    input.setAttribute("aria-activedescendant", active.id);
+    active.scrollIntoView({ block: "nearest" });
+  } else {
+    input.removeAttribute("aria-activedescendant");
+  }
+}
+
+function renderSearchResults() {
+  const input = document.getElementById("search-input");
+  const query = input.value.trim();
+  searchResults = search(query, searchDocuments, SEARCH_RESULTS_SHOWN);
+  document.getElementById("search-results").replaceChildren(...searchResults.map(renderSearchResult));
+  input.setAttribute("aria-expanded", String(searchResults.length > 0));
+  const status = document.getElementById("search-status");
+  status.textContent = query && searchResults.length === 0 ? `Ingen resultater for “${query}”.` : "";
+  setActiveResult(searchResults.length ? 0 : -1);
+}
+
+function chooseSearchResult(index) {
+  const chosen = searchResults[index];
+  if (!chosen) return;
+  document.getElementById("search-dialog").close();
+  if (chosen.panelId) showPanel(chosen.sectionId, chosen.panelId);
+  else location.hash = hashFor(chosen.sectionId, rangeYears);
+}
+
+function openSearch() {
+  const dialog = document.getElementById("search-dialog");
+  if (dialog.open) return;
+  const input = document.getElementById("search-input");
+  searchOpener = document.activeElement;
+  input.value = "";
+  renderSearchResults();
+  dialog.showModal(); // modal: the rest of the page is inert and Tab stays in the dialog
+  input.focus();
+}
+
+function isTypingIn(target) {
+  return Boolean(target.closest?.("input, textarea, select, [contenteditable='true']"));
+}
+
+function initSearch() {
+  searchDocuments = buildSearchIndex();
+  const dialog = document.getElementById("search-dialog");
+  const input = document.getElementById("search-input");
+  const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform ?? navigator.platform ?? "");
+  document.getElementById("search-shortcut").textContent = isMac ? "⌘K" : "Ctrl K";
+  document.getElementById("search-button").addEventListener("click", openSearch);
+  input.addEventListener("input", renderSearchResults);
+  input.addEventListener("keydown", event => {
+    const count = searchResults.length;
+    if (event.key === "ArrowDown" && count) {
+      event.preventDefault();
+      setActiveResult((activeResult + 1) % count);
+    } else if (event.key === "ArrowUp" && count) {
+      event.preventDefault();
+      setActiveResult((activeResult - 1 + count) % count);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      chooseSearchResult(activeResult);
+    }
+  });
+  // A click on the dimmed backdrop (the dialog element itself, outside its content) closes it.
+  dialog.addEventListener("click", event => {
+    if (event.target === dialog) dialog.close();
+  });
+  // However it closes (Escape, backdrop, a choice), the focus goes back where it was.
+  dialog.addEventListener("close", () => {
+    if (searchOpener?.isConnected && searchOpener !== document.body) searchOpener.focus();
+    else document.activeElement?.blur();
+  });
+  document.addEventListener("keydown", event => {
+    const commandK = event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey);
+    const slash = event.key === "/" && !isTypingIn(event.target) && !event.metaKey && !event.ctrlKey && !event.altKey;
+    if (commandK || slash) {
+      event.preventDefault();
+      openSearch();
+    }
+  });
+}
+
 // ---------------------------------------------------------------- sections + routing
 
 // The URL is the single source of truth for what is shown: "#europe?range=10" means the
@@ -1178,25 +1338,46 @@ function renderSection(sectionId) {
   }
 }
 
-function route() {
-  const { sectionId, rangeYears: years, params } = parseHash();
-  rangeYears = years;
-  updateRangeButtons();
-  renderTabs(sectionId);
-  if (sectionId === SIGNALS_TAB.id) {
-    renderSignals();
-  } else if (sectionId === COMPARE_TAB.id) {
-    renderCompare(params);
-  } else {
-    renderSection(sectionId);
+let shownView = null; // the tab, period and tab options on screen, e.g. "europe|5|"
+let shownSectionId = null;
+let shownPanelId = null;
+
+// Scroll to a panel and outline it for a moment, e.g. after choosing it in the search.
+function focusPanel(panelId) {
+  const card = document.getElementById(`panel-${panelId}`);
+  if (!card) return;
+  card.scrollIntoView({ block: "start" });
+  card.classList.remove("is-highlighted");
+  void card.offsetWidth; // restart the animation
+  card.classList.add("is-highlighted");
+  setTimeout(() => card.classList.remove("is-highlighted"), 1800);
+}
+
+// Draws what the URL says. Only a change of tab, period or tab options redraws the page;
+// a panel anchor alone just scrolls, so choosing a panel doesn't rebuild every chart.
+// `force` redraws anyway, e.g. when the colour scheme flips.
+function route(force = false) {
+  const state = parseHash();
+  const view = `${state.sectionId}|${state.rangeYears}|${state.params}`;
+  const redraw = force || view !== shownView;
+  if (redraw) {
+    rangeYears = state.rangeYears;
+    updateRangeButtons();
+    renderTabs(state.sectionId);
+    if (state.sectionId === SIGNALS_TAB.id) {
+      renderSignals();
+    } else if (state.sectionId === COMPARE_TAB.id) {
+      renderCompare(state.params);
+    } else {
+      renderSection(state.sectionId);
+    }
+    // A new tab starts at the top; a new period keeps the position.
+    if (!state.panel && state.sectionId !== shownSectionId) window.scrollTo(0, 0);
+    shownView = view;
+    shownSectionId = state.sectionId;
   }
-  if (scrollTargetPanelId) {
-    document.getElementById(`panel-${scrollTargetPanelId}`)?.scrollIntoView({ block: "start" });
-    scrollTargetPanelId = null;
-  } else if (sectionId !== shownSectionId) {
-    window.scrollTo(0, 0); // a new tab starts at the top; a new period keeps the position
-  }
-  shownSectionId = sectionId;
+  if (state.panel && (state.panel !== shownPanelId || (redraw && !force))) focusPanel(state.panel);
+  shownPanelId = state.panel;
 }
 
 function init() {
@@ -1223,9 +1404,10 @@ function init() {
     if (event.key !== "Escape") return;
     for (const item of document.querySelectorAll('.tab-region[data-open="true"]')) setRegionOpen(item, false);
   });
-  window.addEventListener("hashchange", route);
+  initSearch();
+  window.addEventListener("hashchange", () => route());
   // Chart colours are read from CSS when a chart is created, so redraw if the theme flips.
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", route);
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => route(true));
   route();
 }
 

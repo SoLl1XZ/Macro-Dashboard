@@ -203,8 +203,10 @@ function bestWordScore(query, words) {
   return best;
 }
 
-// Documents ({words, order, ...}) matching every word of the query, best first. A
-// document's `order` breaks ties, so results follow the page's order.
+// Documents matching every word of the query, best first. A document has `words` (its
+// title, country, region and group), optional `seriesWords` (the names of its series,
+// which count half: "Japan (BoJ)" in Global's policy rates is not about Japan) and an
+// `order` that breaks ties, so results follow the page's order.
 function search(query, documents, limit = 12) {
   const queryWords = tokenize(query);
   if (queryWords.length === 0) return [];
@@ -212,7 +214,8 @@ function search(query, documents, limit = 12) {
   for (const document of documents) {
     let total = 0;
     for (const queryWord of queryWords) {
-      const score = bestWordScore(queryWord, document.words);
+      const score = Math.max(bestWordScore(queryWord, document.words),
+                             bestWordScore(queryWord, document.seriesWords ?? []) / 2);
       if (score === 0) {
         total = 0;
         break;
