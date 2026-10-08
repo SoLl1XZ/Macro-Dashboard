@@ -638,9 +638,11 @@ function chartOptions(panel) {
         border: { display: false },
         // A stronger line at zero: crossing it matters for spreads, growth and job gains.
         grid: { color: context => (context.tick.value === 0 ? zeroLineColor : gridColor) },
-        // 6, not 5: with 5, a value just below zero (Japan's −0.1 %) needs one extra step,
-        // so Chart.js jumps to a coarser step and leaves half the axis empty.
-        ticks: { color: tickColor, maxTicksLimit: 6, callback: value => AXIS_NUMBER_FORMAT.format(value) },
+        // A low limit makes Chart.js jump to a coarser step when the data needs one more tick
+        // (Japan's yields of −0.13 to 4.17 got an axis from −2 to 6), leaving much of the axis
+        // empty. With 8, every chart's data fills at least 60 % of its axis (measured on all
+        // 249 charts, 2026-10-08), and the labels stay at least 18px apart.
+        ticks: { color: tickColor, maxTicksLimit: 8, callback: value => AXIS_NUMBER_FORMAT.format(value) },
       },
     },
   };
