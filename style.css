@@ -95,10 +95,44 @@ body {
   gap: 4px 16px;
 }
 
-h1 {
+/* The wordmark: weight contrast between "Macro" and "Dashboard", and a small line chart
+   as the mark. Colours come from the tokens, so it follows light and dark mode. */
+.wordmark {
+  display: flex;
+  align-items: center;
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 21px;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.wordmark-mark {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-right: 10px;
+}
+
+.wordmark-mark rect {
+  fill: none;
+  stroke: var(--text-primary);
+  stroke-width: 1.6;
+}
+
+.wordmark-mark polyline {
+  fill: none;
+  stroke: var(--series-1);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.wordmark-macro { font-weight: 700; }
+
+.wordmark-dashboard {
+  margin-left: 0.28em; /* the flex layout drops the space between the words */
+  color: var(--text-secondary);
+  font-weight: 400;
 }
 
 .updated {

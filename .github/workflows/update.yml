@@ -63,7 +63,7 @@ jobs:
       - name: Collect site files
         run: |
           mkdir _site
-          cp index.html app.js style.css _site/
+          cp index.html app.js style.css favicon.svg _site/
           cp -r data _site/
 
       - uses: actions/configure-pages@v6

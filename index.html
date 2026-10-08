@@ -3,14 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Makro-dashboard</title>
+  <title>Macro Dashboard</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
       <div>
-        <h1>Makro-dashboard</h1>
+        <h1 class="wordmark">
+          <svg class="wordmark-mark" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="1" y="1" width="22" height="22" rx="6"/>
+            <polyline points="5,16 9,12 12,14 15,8 19,9"/>
+          </svg>
+          <span class="wordmark-macro">Macro</span>
+          <span class="wordmark-dashboard">Dashboard</span>
+        </h1>
         <p class="updated" id="updated"></p>
       </div>
       <div class="range-picker" id="range-picker" role="group" aria-label="Periode i graferne">
