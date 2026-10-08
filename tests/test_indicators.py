@@ -104,6 +104,15 @@ class CorePanelsTest(unittest.TestCase):
                 positions = [CORE_TITLES.index(title) for title in titles]
                 self.assertEqual(positions, sorted(set(positions)))  # in order, each at most once
 
+    def test_every_country_has_the_panels_our_sources_cover_for_all(self):
+        # IMF and the exchange rates cover all 16 countries; the other core panels are
+        # left out where no trustworthy free source exists (see CLAUDE.md).
+        always = {"Inflation", "Ledighed", "BNP-vækst inkl. IMF-prognose", "Valuta",
+                  "Statsgæld", "Betalingsbalance"}
+        for country, panels in self.country_panels():
+            with self.subTest(country=country):
+                self.assertLessEqual(always, {panel.title for panel in panels if panel.group == CORE_GROUP})
+
 
 if __name__ == "__main__":
     unittest.main()
