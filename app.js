@@ -404,7 +404,9 @@ function renderCard(panel) {
 // -------------------------------------------------------------------------- charts
 
 let rangeYears = DEFAULT_RANGE_YEARS; // 0 = all data; the default comes from lib.js
-let activeCharts = [];
+// Charts that exist right now, by canvas. Only charts near the screen exist (see showCharts).
+const liveCharts = new Map();
+let chartObserver = null;
 
 const AXIS_NUMBER_FORMAT = new Intl.NumberFormat("da-DK", { maximumFractionDigits: 2 });
 // Local time on purpose: the date adapter places ticks at local midnight, so in UTC
@@ -675,8 +677,37 @@ function createChart(canvas, panel, zoom = null) {
 }
 
 function destroyCharts() {
-  for (const chart of activeCharts) chart.destroy(); // frees the canvases of the previous tab
-  activeCharts = [];
+  chartObserver?.disconnect();
+  chartObserver = null;
+  for (const chart of liveCharts.values()) chart.destroy(); // frees the canvases of the previous tab
+  liveCharts.clear();
+}
+
+// Creates a chart for every canvas on the page once it comes within 300px of the screen,
+// and destroys it again when it moves further away: a tab can hold more than 20 charts,
+// and drawing (and keeping) all of them at once makes the page slow. The canvases must
+// already be in the page, because Chart.js sizes a chart to its box.
+function showCharts() {
+  const canvases = [...document.querySelectorAll("#panels canvas")];
+  if (typeof Chart === "undefined") {
+    for (const canvas of canvases) {
+      canvas.parentElement.replaceWith(el("p", "error-text", "⚠ Grafbiblioteket kunne ikke indlæses (ingen internetforbindelse?)"));
+    }
+    return;
+  }
+  chartObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      const canvas = entry.target.querySelector("canvas");
+      const chart = liveCharts.get(canvas);
+      if (entry.isIntersecting && !chart) {
+        liveCharts.set(canvas, createChart(canvas, canvas.chartPanel));
+      } else if (!entry.isIntersecting && chart) {
+        chart.destroy();
+        liveCharts.delete(canvas);
+      }
+    }
+  }, { rootMargin: "300px 0px" });
+  for (const canvas of canvases) chartObserver.observe(canvas.parentElement);
 }
 
 function updateRangeButtons() {
@@ -933,8 +964,9 @@ function rebaseToCommonStart(entries) {
   return { commonStart, series };
 }
 
-function comparePanel(title, unit, decimals, series) {
-  return { id: "compare", section: COMPARE_TAB.id, title, unit, decimals, change: "diff", referenceLines: [], series };
+// xMax: stacked charts end on the same date, so their dates line up vertically.
+function comparePanel(title, unit, decimals, series, xMax) {
+  return { id: "compare", section: COMPARE_TAB.id, title, unit, decimals, change: "diff", referenceLines: [], series, xMax };
 }
 
 function renderSeriesSelect(label, selectedKey, lookup, onChange) {
@@ -979,6 +1011,7 @@ function renderCompareLegend(series) {
 function comparisonCharts(entries, useIndex) {
   const [a, b] = entries;
   const decimals = Math.max(a.panel.decimals, b.panel.decimals);
+  const latest = Math.max(...entries.map(entry => Date.parse(entry.series.data.at(-1)[0])));
   const chartCard = (panel, legend) => {
     const card = el("article", "card compare-card");
     card.append(el("h3", "card-title", panel.title));
@@ -989,17 +1022,17 @@ function comparisonCharts(entries, useIndex) {
 
   if (useIndex) {
     const { commonStart, series } = rebaseToCommonStart(entries);
-    const panel = comparePanel(`Indeks: begge = 100 den ${formatPeriod(commonStart, "D")}`, "Indeks", 1, series);
+    const panel = comparePanel(`Indeks: begge = 100 den ${formatPeriod(commonStart, "D")}`, "Indeks", 1, series, latest);
     return [chartCard(panel, renderCompareLegend(series))];
   }
   const named = entries.map(entry => ({ ...entry.series, label: entryName(entry) }));
   if (a.panel.unit === b.panel.unit) {
-    const panel = comparePanel(`Samme enhed (${a.panel.unit}): én akse`, a.panel.unit, decimals, named);
+    const panel = comparePanel(`Samme enhed (${a.panel.unit}): én akse`, a.panel.unit, decimals, named, latest);
     return [chartCard(panel, renderCompareLegend(named))];
   }
   return entries.map((entry, index) =>
     chartCard(comparePanel(`${named[index].label} (${entry.panel.unit})`, entry.panel.unit,
-                           entry.panel.decimals, [named[index]])));
+                           entry.panel.decimals, [named[index]], latest)));
 }
 
 function renderCompare(params) {
@@ -1046,15 +1079,7 @@ function renderCompare(params) {
     ...charts.map(chart => chart.card),
   );
 
-  if (typeof Chart === "undefined") return;
-  const created = charts.map(({ card, panel }) => createChart(card.querySelector("canvas"), panel));
-  // Two stacked charts share one time axis, so their dates line up vertically.
-  const latest = Math.max(...entries.map(entry => Date.parse(entry.series.data.at(-1)[0])));
-  for (const chart of created) {
-    chart.options.scales.x.max = latest;
-    chart.update();
-  }
-  activeCharts.push(...created);
+  showCharts();
 }
 
 // ---------------------------------------------------------------------- full screen
@@ -1554,15 +1579,7 @@ function renderSection(sectionId) {
     children.push(cards[index]);
   });
   document.getElementById("panels").replaceChildren(...children);
-
-  // Charts are created after the cards are in the page: Chart.js needs their size.
-  for (const canvas of document.querySelectorAll("#panels canvas")) {
-    if (typeof Chart === "undefined") {
-      canvas.parentElement.replaceWith(el("p", "error-text", "⚠ Grafbiblioteket kunne ikke indlæses (ingen internetforbindelse?)"));
-      continue;
-    }
-    activeCharts.push(createChart(canvas, canvas.chartPanel));
-  }
+  showCharts();
 }
 
 let shownView = null; // the tab, period and tab options on screen, e.g. "europe|5|"
