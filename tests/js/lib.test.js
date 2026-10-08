@@ -124,3 +124,26 @@ test("search: synonyms, typos and words in the middle", () => {
   assert.deepEqual(names("ædelmetal"), ["Råvarer › Guld"]);
   assert.deepEqual(names("cpi japan"), ["Japan › Inflation"]);
 });
+
+test("search: share prices by name and in English", () => {
+  // Built like buildSearchIndex in app.js: title, group and tab as words, series as seriesWords.
+  const panel = (title, group, series, order) => ({
+    name: `Aktier › ${title}`, words: lib.tokenize(`${title} ${group} Aktier`),
+    seriesWords: lib.tokenize(series), order,
+  });
+  const documents = [
+    panel("Aktier i Europa", "Regioner", "Euroområdet Tyskland Danmark", 1),
+    panel("S&P 500", "Kendte indeks", "S&P 500", 2),
+    panel("Euro Stoxx 50", "Kendte indeks", "Euro Stoxx 50", 3),
+    panel("Fald fra toppen i Europa", "Fald fra toppen", "Euroområdet Tyskland Danmark", 4),
+    ...DOCS.map(document => ({ ...document, order: document.order + 10 })),
+  ];
+  const found = query => lib.search(query, documents).map(document => document.name);
+  assert.deepEqual(found("S&P 500"), ["Aktier › S&P 500"]);
+  assert.deepEqual(found("sp500"), ["Aktier › S&P 500"]);
+  assert.deepEqual(found("stocks"), ["Aktier › Aktier i Europa", "Aktier › S&P 500",
+                                     "Aktier › Euro Stoxx 50", "Aktier › Fald fra toppen i Europa"]);
+  assert.deepEqual(found("aktieindeks"), found("stocks"));
+  assert.deepEqual(found("drawdown"), ["Aktier › Fald fra toppen i Europa"]);
+  assert.deepEqual(found("equities germany"), ["Aktier › Aktier i Europa", "Aktier › Fald fra toppen i Europa"]);
+});
