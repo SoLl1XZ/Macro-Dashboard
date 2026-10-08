@@ -36,6 +36,7 @@ class Section:
 # are kept, so links from before the regions still work.
 SECTIONS: list[Section] = [
     Section("global", "Global"),
+    Section("equities", "Aktier"),
     Section("commodities", "Råvarer"),
     Section("north-america", "Nordamerika"),
     Section("us", "USA", "north-america"),
@@ -201,6 +202,37 @@ def current_account_panel(section: str, key: str, code: str) -> Panel:
                  (S(key, "Løbende poster", "imf_weo", f"BCA_NGDPD/{code}"),), group=CORE_GROUP)
 
 
+# Share prices: the Aktier tab has one panel of index levels per region and one of how far
+# each index is below its top. Per region: (title, id suffix, countries, note); per country:
+# (key suffix, label, OECD code).
+SHARE_PRICE_REGIONS = (
+    ("Nordamerika", "north_america", (("us", "USA", "USA"), ("ca", "Canada", "CAN")), ""),
+    ("Europa", "europe", (("ea", "Euroområdet", "EA20"), ("uk", "Storbritannien", "GBR"),
+                          ("de", "Tyskland", "DEU"), ("fr", "Frankrig", "FRA"), ("dk", "Danmark", "DNK"),
+                          ("no", "Norge", "NOR"), ("se", "Sverige", "SWE")),
+     "Euroområdet er Euro Stoxx, Danmark er OMXC (alle aktier)."),
+    ("Asien", "asia", (("jp", "Japan", "JPN"), ("cn", "Kina", "CHN"), ("kr", "Sydkorea", "KOR"),
+                       ("in", "Indien", "IND"), ("id", "Indonesien", "IDN")), ""),
+)
+
+
+def share_price_panel(title: str, region: str, countries: tuple[tuple[str, str, str], ...], note: str) -> Panel:
+    return Panel(f"equities_{region}", "equities", f"Aktier i {title}", "Indeks (2015 = 100)",
+                 "OECD's brede aktieindeks i hvert lands egen valuta, uden udbytte. Månedsgennemsnit, "
+                 "2015 = 100, så kurverne viser stigningen siden 2015." + (f" {note}" if note else ""),
+                 tuple(S(f"eq_{suffix}", label, "oecd", f"FINMARK/SHARE/{code}") for suffix, label, code in countries),
+                 change="pct", decimals=1, group="Regioner")
+
+
+def drawdown_panel(title: str, region: str, countries: tuple[tuple[str, str, str], ...], note: str) -> Panel:
+    return Panel(f"equities_drawdown_{region}", "equities", f"Fald fra toppen i {title}", "% fra top",
+                 "Hvor langt hvert indeks ligger under sin højeste værdi siden 1999 (0 = ny top). Et fald "
+                 "på 20 % kaldes et bjørnemarked. Målt på månedsgennemsnit, så korte fald ses kun delvist.",
+                 tuple(S(f"eq_{suffix}_dd", label, "derived", (f"eq_{suffix}",), "drawdown")
+                       for suffix, label, _ in countries),
+                 decimals=1, group="Fald fra toppen", reference_lines=((-20.0, "Bjørnemarked (−20 %)"),))
+
+
 PANELS: list[Panel] = [
     # ------------------------------------------------------------------ GLOBAL
     Panel("dollar", "global", "Dollarindeks (bredt)", "Indeks",
@@ -227,6 +259,27 @@ PANELS: list[Panel] = [
           (S("infl_world", "Verden", "imf_weo", "PCPIPCH/WEOWORLD"),
            S("infl_adv", "Avancerede økonomier", "imf_weo", "PCPIPCH/ADVEC"),
            S("infl_em", "Emerging markets", "imf_weo", "PCPIPCH/OEMDC"))),
+
+    # ------------------------------------------------------------------ AKTIER
+    # Monthly averages only, so every index updates at the same time, about a week after the
+    # month ends (daily data exists for few countries; the daily S&P 500 and Nikkei 225 on the
+    # USA and Japan tabs moved here as monthly, keeping their keys). OECD's broad indices share the
+    # base 2015 = 100; the named indices come from the ECB. Thailand, Vietnam and Malaysia have
+    # no free source.
+    *(share_price_panel(*region) for region in SHARE_PRICE_REGIONS),
+    Panel("sp500", "equities", "S&P 500", "Indekspoint",
+          "De 500 største amerikanske selskaber, vægtet efter markedsværdi. Månedsgennemsnit.",
+          (S("sp500", "S&P 500", "ecb", "FM/M.US.USD.DS.EI.S_PCOMP.HSTA"),), change="pct",
+          group="Kendte indeks"),
+    Panel("eurostoxx50", "equities", "Euro Stoxx 50", "Indekspoint",
+          "De 50 største selskaber i euroområdet, vægtet efter markedsværdi. Månedsgennemsnit.",
+          (S("eurostoxx50", "Euro Stoxx 50", "ecb", "FM/M.U2.EUR.DS.EI.DJES50I.HSTA"),), change="pct",
+          group="Kendte indeks"),
+    Panel("nikkei", "equities", "Nikkei 225", "Indekspoint",
+          "225 store japanske selskaber, vægtet efter aktiekurs i stedet for markedsværdi. Månedsgennemsnit.",
+          (S("nikkei", "Nikkei 225", "ecb", "FM/M.JP.JPY.DS.EI.JAPDOWA.HSTA"),), change="pct",
+          group="Kendte indeks"),
+    *(drawdown_panel(*region) for region in SHARE_PRICE_REGIONS),
 
     # ----------------------------------------------------------------- RÅVARER
     # Monthly prices are IMF series on FRED unless noted; gold, silver and platinum come
@@ -430,10 +483,6 @@ PANELS: list[Panel] = [
     Panel("us_sentiment", "us", "Forbrugertillid (Michigan)", "Indeks",
           "University of Michigan Consumer Sentiment: den originale serie bag OECD's tal ovenfor.",
           (S("us_umcsent", "Forbrugertillid", "fred", "UMCSENT"),),
-          group=extras_group("USA")),
-    Panel("us_equities", "us", "S&P 500", "Indeks",
-          "De 500 største amerikanske aktier.",
-          (S("sp500", "S&P 500", "fred", "SP500"),), change="pct",
           group=extras_group("USA")),
 
     # ------------------------------------------------------------------ CANADA
@@ -988,10 +1037,6 @@ PANELS: list[Panel] = [
     Panel("jp_exports", "japan", "Eksport", "% år/år",
           "Vareeksportens værdi i yen sammenlignet med samme måned året før (OECD).",
           (S("jp_exports", "Vareeksport", "fred", "XTEXVA01JPM664S", "yoy"),),
-          group=extras_group("Japan")),
-    Panel("nikkei", "japan", "Nikkei 225", "Indeks",
-          "Japans førende aktieindeks (prisindeks).",
-          (S("nikkei", "Nikkei 225", "fred", "NIKKEI225"),), change="pct",
           group=extras_group("Japan")),
 
     # ---------------------------------------------------------------- SYDKOREA

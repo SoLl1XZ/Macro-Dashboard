@@ -6,7 +6,7 @@ from collections import Counter
 from pathlib import Path
 
 from fetch_data import BATCH_FETCHERS, SINGLE_FETCHERS
-from indicators import CORE_GROUP, CORE_TITLES, INPUT_SERIES, PANELS, SECTIONS, Ref, owned_series
+from indicators import CORE_GROUP, CORE_TITLES, INPUT_SERIES, PANELS, SECTIONS, Ref, Series, owned_series
 
 COUNTRIES_BY_REGION = {
     "north-america": ["us", "canada"],
@@ -38,16 +38,30 @@ class CatalogTest(unittest.TestCase):
     def test_transforms_are_known(self):
         for s in ALL_SERIES:
             if s.source == "derived":
-                self.assertIn(s.transform, {"spread", "ratio", "real"}, s.key)
+                self.assertIn(s.transform, {"spread", "ratio", "real", "drawdown"}, s.key)
             else:
                 self.assertIn(s.transform, {None, "yoy", "diff"}, s.key)
 
     def test_sections_are_in_the_agreed_menu_order(self):
         # The page adds Signaler in front and Sammenlign at the end of these.
         self.assertEqual([section.id for section in SECTIONS],
-                         ["global", "commodities", "north-america", *COUNTRIES_BY_REGION["north-america"],
+                         ["global", "equities", "commodities", "north-america", *COUNTRIES_BY_REGION["north-america"],
                           "europe", *COUNTRIES_BY_REGION["europe"],
                           "asia", *COUNTRIES_BY_REGION["asia"]])
+
+    def test_share_prices_are_monthly_so_they_update_together(self):
+        # Erik's choice (2026-10-08): every index on the Aktier tab updates at the same time,
+        # so no daily series there, even for the few countries that have one.
+        for panel in PANELS:
+            if panel.section != "equities":
+                continue
+            for s in panel.series:
+                with self.subTest(panel=panel.id, series=s.key):
+                    self.assertIsInstance(s, Series)  # a reference could point to a daily series
+                    if s.source == "ecb":
+                        self.assertTrue(s.query.startswith("FM/M."))
+                    else:
+                        self.assertIn(s.source, {"oecd", "derived"})
 
     def test_panels_of_a_group_are_adjacent(self):
         # The page starts a new sub-heading whenever the group changes, so a group split
