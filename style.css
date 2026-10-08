@@ -740,6 +740,10 @@ main {
   height: 180px;
 }
 
+/* Until its chart is created (when it nears the screen), a canvas has the browser's default
+   width of 300px, wider than a card on a 320px phone. */
+.chart > canvas { max-width: 100%; }
+
 /* The time window slider under a chart: an overview of all the history, the shown window
    marked, and a handle at each end. --from and --to (0 to 1) place the mark; half a handle's
    width on each side keeps it under the handles' centres, where a range input puts them. */
