@@ -238,6 +238,41 @@ class FetchImfQneaTest(unittest.TestCase):
         self.assertEqual(batch["MYS"], [("2025-10-01", 470000.0), ("2026-01-01", 480000.0)])
 
 
+class PinkSheetTest(unittest.TestCase):
+    """The World Bank's Pink Sheet, parsed from a small saved workbook (see tests/fixtures)."""
+
+    SAMPLE = (Path(__file__).parent / "fixtures" / "pink_sheet_sample.xlsx").read_bytes()
+    PAGE = ('<a href="https://thedocs.worldbank.org/en/doc/abc-0050012026/related/CMO-Historical-Data-Annual.xlsx">'
+            'Annual</a> <a href="https://thedocs.worldbank.org/en/doc/abc-0050012026/related/'
+            'CMO-Historical-Data-Monthly.xlsx">Monthly prices</a>')
+
+    def test_columns_become_series_named_by_their_header(self):
+        prices = fetch_data.parse_pink_sheet(self.SAMPLE)
+        self.assertEqual(set(prices), {"Crude oil, Brent", "Gold", "Silver"})  # Silver is an inline string
+        self.assertEqual(prices["Crude oil, Brent"][-1], ("2026-09-01", 116.8))
+
+    def test_no_price_marker_is_left_out(self):
+        gold = fetch_data.parse_pink_sheet(self.SAMPLE)["Gold"]
+        self.assertEqual(gold, [("2026-07-01", 4073.0), ("2026-09-01", 4319.0)])  # "…" in August
+
+    def test_monthly_file_is_found_on_the_overview_page(self):
+        self.assertEqual(fetch_data.find_pink_sheet_url(self.PAGE),
+                         "https://thedocs.worldbank.org/en/doc/abc-0050012026/related/CMO-Historical-Data-Monthly.xlsx")
+        with self.assertRaises(ValueError):
+            fetch_data.find_pink_sheet_url("<html>No links today</html>")
+
+    def test_unknown_sheet_is_an_error(self):
+        with self.assertRaisesRegex(ValueError, "No sheet named"):
+            fetch_data.read_xlsx_rows(self.SAMPLE, "Annual Prices")
+
+    def test_fetch_returns_only_the_asked_commodities(self):
+        with mock.patch.object(fetch_data, "http_get", return_value=self.PAGE), \
+                mock.patch.object(fetch_data, "http_get_bytes", return_value=self.SAMPLE) as get_bytes:
+            batch = fetch_data.fetch_pink_sheet(["Gold", "Platinum"])
+        self.assertEqual(set(batch), {"Gold"})  # Platinum is missing, so fetch_source reports it
+        self.assertTrue(get_bytes.call_args.args[0].endswith("CMO-Historical-Data-Monthly.xlsx"))
+
+
 class MofJgbTest(unittest.TestCase):
     """JGB yields from Japan's Ministry of Finance, parsed from saved sample files."""
 

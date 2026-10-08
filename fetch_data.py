@@ -10,6 +10,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
+import zipfile
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from datetime import date, datetime, timedelta, timezone
@@ -33,7 +35,8 @@ DATA_JS_PREFIX = "window.MACRO_DATA = "
 SOURCE_NAMES = {
     "fred": "FRED", "ecb": "ECB", "eurostat": "Eurostat", "bis": "BIS",
     "imf_weo": "IMF World Economic Outlook", "imf_cpi": "IMF", "imf_qnea": "IMF", "oecd": "OECD",
-    "statbank": "Danmarks Statistik", "mof": "Japans finansministerium", "derived": "Beregnet",
+    "statbank": "Danmarks Statistik", "mof": "Japans finansministerium",
+    "worldbank": "Verdensbanken (Pink Sheet)", "derived": "Beregnet",
 }
 SDMX_CSV = "application/vnd.sdmx.data+csv;version=1.0.0"
 # The APIs' bot filters disagree: FRED and the IMF block custom agents, the OECD blocks
@@ -45,6 +48,11 @@ USER_AGENT = "curl/8.7.1"
 
 def http_get(url: str, accept: str | None = None, attempts: int = 3, errors: str = "strict") -> str:
     """GET a URL as text. errors="replace" tolerates bytes that aren't valid UTF-8."""
+    return http_get_bytes(url, accept, attempts).decode("utf-8", errors=errors)
+
+
+def http_get_bytes(url: str, accept: str | None = None, attempts: int = 3) -> bytes:
+    """GET a URL as raw bytes, e.g. a spreadsheet."""
     headers = {"User-Agent": USER_AGENT}
     if accept:
         headers["Accept"] = accept
@@ -52,7 +60,7 @@ def http_get(url: str, accept: str | None = None, attempts: int = 3, errors: str
     for attempt in range(1, attempts + 1):
         try:
             with urllib.request.urlopen(request, timeout=90) as response:
-                return response.read().decode("utf-8", errors=errors)
+                return response.read()
         except urllib.error.HTTPError as error:
             # A 4xx means the query itself is wrong, so retrying cannot help.
             # 429 (rate limited) and 5xx (server trouble) are often temporary.
@@ -299,6 +307,88 @@ def fetch_mof_jgb(maturities: list[str]) -> Batch:
             for maturity in maturities if maturity in values_by_maturity}
 
 
+# The World Bank's "Pink Sheet": monthly commodity prices, including the precious metals
+# that FRED no longer has. The file's path changes with each yearly edition, so the link
+# is looked up on the overview page every run.
+PINK_SHEET_PAGE = "https://www.worldbank.org/en/research/commodity-markets"
+PINK_SHEET_PRICES = "Monthly Prices"
+XLSX = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+XLSX_RELATION = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+
+
+def find_pink_sheet_url(html: str) -> str:
+    match = re.search(r"""https?://[^"'\s<>]+/CMO-Historical-Data-Monthly\.xlsx""", html)
+    if match is None:
+        raise ValueError("No link to CMO-Historical-Data-Monthly.xlsx on the World Bank page")
+    return match.group(0)
+
+
+def xlsx_cell_text(cell: ET.Element, shared_strings: list[str]) -> str | None:
+    """A cell's text: numbers are stored in the cell, most texts in a shared list."""
+    kind = cell.get("t")
+    if kind == "inlineStr":
+        return "".join(t.text or "" for t in cell.iter(f"{XLSX}t"))
+    value = cell.find(f"{XLSX}v")
+    if value is None or value.text is None:
+        return None
+    return shared_strings[int(value.text)] if kind == "s" else value.text
+
+
+def read_xlsx_rows(data: bytes, sheet_name: str) -> dict[int, dict[str, str | None]]:
+    """One worksheet of an .xlsx file as {row number: {column letters: text}}.
+
+    An .xlsx file is a zip of XML files, so the standard library is enough: the workbook
+    names the sheets, its relations file says which XML file holds each one.
+    """
+    with zipfile.ZipFile(io.BytesIO(data)) as book:
+        workbook = ET.fromstring(book.read("xl/workbook.xml"))
+        relations = ET.fromstring(book.read("xl/_rels/workbook.xml.rels"))
+        target_by_id = {relation.get("Id"): relation.get("Target") for relation in relations}
+        sheet_id = next((sheet.get(XLSX_RELATION) for sheet in workbook.iter(f"{XLSX}sheet")
+                         if sheet.get("name") == sheet_name), None)
+        if sheet_id is None:
+            raise ValueError(f"No sheet named {sheet_name!r}")
+        target = target_by_id[sheet_id].lstrip("/")
+        path = target if target.startswith("xl/") else f"xl/{target}"
+        shared_strings = []
+        if "xl/sharedStrings.xml" in book.namelist():
+            shared_strings = ["".join(t.text or "" for t in item.iter(f"{XLSX}t"))
+                              for item in ET.fromstring(book.read("xl/sharedStrings.xml"))]
+        sheet = ET.fromstring(book.read(path))
+    rows: dict[int, dict[str, str | None]] = {}
+    for row in sheet.iter(f"{XLSX}row"):
+        rows[int(row.get("r"))] = {re.match(r"[A-Z]+", cell.get("r"))[0]: xlsx_cell_text(cell, shared_strings)
+                                   for cell in row.iter(f"{XLSX}c")}
+    return rows
+
+
+def parse_pink_sheet(data: bytes) -> Batch:
+    """Monthly prices per commodity, keyed by the Pink Sheet's column header (e.g. "Gold").
+
+    The sheet has a few title lines, a row of commodity names, a row of units such as
+    "($/troy oz)", and then one row per month ("2026M09" in column A). "…" marks no price.
+    """
+    rows = read_xlsx_rows(data, PINK_SHEET_PRICES)
+    month_rows = [number for number, cells in sorted(rows.items())
+                  if re.fullmatch(r"\d{4}M\d{2}", (cells.get("A") or "").strip())]
+    if not month_rows:
+        raise ValueError("No monthly rows in the Pink Sheet")
+
+    def is_units_row(cells: dict) -> bool:
+        texts = [text for text in cells.values() if text]
+        return bool(texts) and all(text.strip().startswith("(") for text in texts)
+
+    above = [number for number in sorted(rows) if number < month_rows[0] and not is_units_row(rows[number])]
+    headers = {column: text.strip() for column, text in rows[above[-1]].items() if column != "A" and text}
+    return {name: to_observations((rows[number]["A"], rows[number].get(column)) for number in month_rows)
+            for column, name in headers.items()}
+
+
+def fetch_pink_sheet(commodities: list[str]) -> Batch:
+    prices = parse_pink_sheet(http_get_bytes(find_pink_sheet_url(http_get(PINK_SHEET_PAGE))))
+    return {commodity: prices[commodity] for commodity in commodities if commodity in prices}
+
+
 SINGLE_FETCHERS: dict[str, Callable[[str], list[Observation]]] = {
     "fred": fetch_fred,
     "ecb": fetch_ecb,
@@ -312,6 +402,7 @@ BATCH_FETCHERS: dict[str, Callable[[list[str]], Batch]] = {
     "imf_qnea": fetch_imf_qnea,
     "oecd": fetch_oecd,
     "mof": fetch_mof_jgb,
+    "worldbank": fetch_pink_sheet,
 }
 
 
@@ -451,6 +542,8 @@ def source_url(s: Series) -> str | None:
             return f"https://www.statistikbanken.dk/{s.query.split('?')[0]}"
         case "mof":
             return "https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/index.htm"
+        case "worldbank":
+            return PINK_SHEET_PAGE
         case _:
             return None  # derived series are computed here, not published anywhere
 
