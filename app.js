@@ -389,7 +389,7 @@ function renderCard(panel) {
     charts.addEventListener("click", () => {
       if (lastPointerType === "mouse") openFullscreen(panel);
     });
-    card.append(charts);
+    card.append(charts, renderRangeSlider(panel, view => syncCardWindow(panel, view)));
   }
   if (panel.series.length > 1) card.append(renderSeriesTable(panel));
   const notes = renderNotes(panel);
@@ -687,8 +687,11 @@ function destroyCharts() {
 // and destroys it again when it moves further away: a tab can hold more than 20 charts,
 // and drawing (and keeping) all of them at once makes the page slow. The canvases must
 // already be in the page, because Chart.js sizes a chart to its box.
+// Chart canvases only: a slider's overview is a canvas too, but not a chart.
+const CHART_CANVAS = ".chart > canvas";
+
 function showCharts() {
-  const canvases = [...document.querySelectorAll("#panels canvas")];
+  const canvases = [...document.querySelectorAll(`#panels ${CHART_CANVAS}`)];
   if (typeof Chart === "undefined") {
     for (const canvas of canvases) {
       canvas.parentElement.replaceWith(el("p", "error-text", "⚠ Grafbiblioteket kunne ikke indlæses (ingen internetforbindelse?)"));
@@ -697,10 +700,10 @@ function showCharts() {
   }
   chartObserver = new IntersectionObserver(entries => {
     for (const entry of entries) {
-      const canvas = entry.target.querySelector("canvas");
+      const canvas = entry.target.querySelector(CHART_CANVAS);
       const chart = liveCharts.get(canvas);
       if (entry.isIntersecting && !chart) {
-        liveCharts.set(canvas, createChart(canvas, canvas.chartPanel));
+        liveCharts.set(canvas, createChart(canvas, withWindow(canvas.chartPanel)));
       } else if (!entry.isIntersecting && chart) {
         chart.destroy();
         liveCharts.delete(canvas);
@@ -708,6 +711,7 @@ function showCharts() {
     }
   }, { rootMargin: "300px 0px" });
   for (const canvas of canvases) chartObserver.observe(canvas.parentElement);
+  for (const slider of document.querySelectorAll("#panels .range-slider")) slider.draw();
 }
 
 function updateRangeButtons() {
@@ -1093,6 +1097,7 @@ let dialogCharts = [];
 let dialogPanelId = null;
 let dialogOpenedHere = false; // opened by a click here, so closing can go back in history
 let keepScrollOnce = false; // closing full screen must not jump to the previous URL's panel
+let dialogSlider = null;
 let lastPointerType = "mouse";
 
 function findPanel(panelId) {
@@ -1139,13 +1144,14 @@ function fullscreenHash(view) {
 
 // Shows the same window in every chart of the dialog (a split panel has several) and keeps
 // it in the URL. replaceState: a zoom is not a step the back button should undo.
+// The source (a chart being zoomed, or "slider") already shows the window.
 function setDialogWindow(view, source = null) {
+  const panel = findPanel(dialogPanelId);
   for (const chart of dialogCharts) {
-    if (chart === source) continue;
-    chart.options.scales.x.min = view ? view.min : chart.defaultWindow.min;
-    chart.options.scales.x.max = view ? view.max : chart.defaultWindow.max;
-    chart.update("none");
+    if (chart !== source) showWindow(chart, view ?? chart.defaultWindow);
   }
+  if (source !== "slider") dialogSlider?.update(view ?? defaultWindow(panel));
+  syncCardWindow(panel, view); // the card behind follows, slider included
   history.replaceState(null, "", fullscreenHash(view));
 }
 
@@ -1178,8 +1184,10 @@ function renderPanelDialogContent(panel) {
   toolbar.append(reset, el("span", "card-unit", panel.unit),
                  el("span", "panel-dialog-hint", "Scroll eller knib for at zoome, træk for at flytte"));
 
+  dialogSlider = renderRangeSlider(panel, view => setDialogWindow(view, "slider"));
   const nodes = [head, renderHeadline(panel), toolbar,
-                 panel.split ? renderSplitCharts(panel) : renderChartSlot(panel, "chart chart-full")];
+                 panel.split ? renderSplitCharts(panel) : renderChartSlot(panel, "chart chart-full"),
+                 dialogSlider];
   if (panel.series.length > 1) nodes.push(renderSeriesTable(panel));
   const notes = renderNotes(panel);
   if (notes) nodes.push(notes);
@@ -1196,7 +1204,9 @@ function openPanelDialog(panelId, from, to) {
     if (dialog.open) dialog.close();
     return;
   }
-  const view = from && to ? { min: monthStart(from), max: monthEnd(to) } : null;
+  // The window: from the URL (a shared link), else the one chosen on the card, else the default.
+  const fromUrl = from && to ? { min: monthStart(from), max: monthEnd(to) } : null;
+  const view = fromUrl ?? panelWindows.get(panelId) ?? null;
   if (dialog.open && dialogPanelId === panelId) return; // already showing it
   for (const chart of dialogCharts) chart.destroy();
   dialogCharts = [];
@@ -1206,12 +1216,15 @@ function openPanelDialog(panelId, from, to) {
   if (!dialog.open) dialog.showModal();
   document.documentElement.classList.add("has-modal");
   const span = dataSpan(panel);
-  for (const canvas of box.querySelectorAll("canvas")) {
+  for (const canvas of box.querySelectorAll(CHART_CANVAS)) {
     const part = view ? { ...canvas.chartPanel, xMin: view.min, xMax: view.max } : canvas.chartPanel;
     const chart = createChart(canvas, part, zoomOptions(span));
     chart.defaultWindow = { min: rangeStart(rangeYears), max: canvas.chartPanel.xMax };
     dialogCharts.push(chart);
   }
+  dialogSlider.update(view ?? defaultWindow(panel));
+  dialogSlider.draw();
+  if (view && !fromUrl) history.replaceState(null, "", fullscreenHash(view)); // so the link shows it too
 }
 
 // However the dialog closes (button, Escape, backdrop, back button), its charts go, and if
@@ -1221,6 +1234,7 @@ function onPanelDialogClose() {
   for (const chart of dialogCharts) chart.destroy();
   dialogCharts = [];
   dialogPanelId = null;
+  dialogSlider = null;
   document.documentElement.classList.remove("has-modal");
   const openedHere = dialogOpenedHere;
   dialogOpenedHere = false;
@@ -1242,6 +1256,164 @@ function initPanelDialog() {
   dialog.addEventListener("click", event => {
     if (event.target === dialog) dialog.close(); // a click on the backdrop
   });
+}
+
+// ------------------------------------------------------------- time window slider
+// Under every chart: an overview of the whole history with the shown window marked, and two
+// handles that choose the window for just that chart. It starts at the global period, and a
+// new global period resets it. The window is kept in memory, not in the URL, except in full
+// screen (from/to), where the slider and the zoom move together.
+
+const panelWindows = new Map(); // panel id -> {min, max} chosen with a slider or a zoom
+const MIN_WINDOW_MONTHS = 2;
+
+function monthIndex(timestamp) {
+  const date = new Date(timestamp);
+  return date.getUTCFullYear() * 12 + date.getUTCMonth();
+}
+
+function monthIndexStart(index) {
+  return Date.UTC(Math.floor(index / 12), index % 12, 1);
+}
+
+function monthIndexEnd(index) {
+  return Date.UTC(Math.floor(index / 12), index % 12 + 1, 1) - 1;
+}
+
+// The global period, cut to the panel's data.
+function defaultWindow(panel) {
+  const span = dataSpan(panel);
+  return { min: Math.max(rangeStart(rangeYears) ?? span.min, span.min), max: span.max };
+}
+
+function withWindow(part) {
+  const view = panelWindows.get(part.id);
+  return view ? { ...part, xMin: view.min, xMax: view.max } : part;
+}
+
+function showWindow(chart, view) {
+  chart.options.scales.x.min = view.min;
+  chart.options.scales.x.max = view.max;
+  chart.update("none");
+}
+
+// A card's charts (live ones; the rest get it when created) and its slider show the window.
+function syncCardWindow(panel, view) {
+  if (!panel) return;
+  if (view) panelWindows.set(panel.id, view);
+  else panelWindows.delete(panel.id);
+  const card = document.getElementById(`panel-${panel.id}`);
+  if (!card) return;
+  for (const canvas of card.querySelectorAll(CHART_CANVAS)) {
+    const chart = liveCharts.get(canvas);
+    if (chart) showWindow(chart, view ?? { min: rangeStart(rangeYears), max: canvas.chartPanel.xMax });
+  }
+  card.querySelector(".range-slider")?.update(view ?? defaultWindow(panel));
+}
+
+// A thin line per series over the whole history, each scaled to fill the height (a split
+// panel's series have different units; the others share one scale).
+function drawOverview(canvas, panel, span) {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  if (!width || !height) return;
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = Math.round(width * ratio);
+  canvas.height = Math.round(height * ratio);
+  const context = canvas.getContext("2d");
+  context.scale(ratio, ratio);
+  const withData = panel.series.filter(series => series.data.length > 0);
+  const scaleOf = list => {
+    let low = Infinity;
+    let high = -Infinity;
+    for (const series of list) {
+      for (const [, value] of series.data) {
+        low = Math.min(low, value);
+        high = Math.max(high, value);
+      }
+    }
+    return { low, high: high > low ? high : low + 1 };
+  };
+  const shared = scaleOf(withData);
+  const x = timestamp => (timestamp - span.min) / (span.max - span.min || 1) * width;
+  context.lineWidth = 1;
+  context.globalAlpha = 0.7;
+  panel.series.forEach((series, index) => {
+    if (series.data.length === 0) return;
+    const { low, high } = panel.split ? scaleOf([series]) : shared;
+    const y = value => height - 2 - (value - low) / (high - low) * (height - 4);
+    context.strokeStyle = cssVar(`--series-${index + 1 + (panel.colorOffset ?? 0)}`);
+    context.beginPath();
+    series.data.forEach(([date, value], pointIndex) => {
+      const px = x(Date.parse(date));
+      if (pointIndex === 0) context.moveTo(px, y(value));
+      else context.lineTo(px, y(value));
+    });
+    context.stroke();
+  });
+}
+
+// Two native range inputs on top of each other, so keyboard (arrows: a month, PageUp/Down:
+// a year), touch and screen readers work as for any slider. onChange gets {min, max}.
+function renderRangeSlider(panel, onChange) {
+  const span = dataSpan(panel);
+  const first = monthIndex(span.min);
+  const months = Math.max(monthIndex(span.max) - first, 1);
+  const box = el("div", "range-slider");
+  const overview = el("canvas", "range-overview");
+  overview.setAttribute("aria-hidden", "true");
+  const selection = el("div", "range-selection");
+  const start = el("input", "range-thumb");
+  const end = el("input", "range-thumb");
+  for (const [input, label] of [[start, "Start"], [end, "Slut"]]) {
+    input.type = "range";
+    input.min = "0";
+    input.max = String(months);
+    input.step = "1";
+    input.setAttribute("aria-label", `${label} på tidsudsnittet: ${panel.title}`);
+  }
+  box.append(overview, selection, start, end);
+
+  const paint = () => {
+    const a = Number(start.value);
+    const b = Number(end.value);
+    box.style.setProperty("--from", a / months);
+    box.style.setProperty("--to", b / months);
+    start.setAttribute("aria-valuetext", MONTH_FORMAT.format(new Date(monthIndexStart(first + a))));
+    end.setAttribute("aria-valuetext", MONTH_FORMAT.format(new Date(monthIndexStart(first + b))));
+  };
+  const clampIndex = index => Math.min(Math.max(index, 0), months);
+  const emit = moved => {
+    let a = Number(start.value);
+    let b = Number(end.value);
+    // The handles can't pass each other: the one being moved stops a little before the other.
+    if (b - a < MIN_WINDOW_MONTHS) {
+      if (moved === start) a = Math.max(b - MIN_WINDOW_MONTHS, 0);
+      else b = Math.min(a + MIN_WINDOW_MONTHS, months);
+    }
+    start.value = String(a);
+    end.value = String(b);
+    paint();
+    onChange({ min: monthIndexStart(first + a), max: monthIndexEnd(first + b) });
+  };
+  for (const input of [start, end]) {
+    input.addEventListener("input", () => emit(input));
+    input.addEventListener("keydown", event => {
+      if (event.key !== "PageUp" && event.key !== "PageDown") return;
+      event.preventDefault();
+      input.value = String(clampIndex(Number(input.value) + (event.key === "PageUp" ? 12 : -12)));
+      emit(input);
+    });
+  }
+
+  box.update = view => {
+    start.value = String(clampIndex(monthIndex(view.min) - first));
+    end.value = String(clampIndex(monthIndex(view.max) - first));
+    paint();
+  };
+  box.draw = () => drawOverview(overview, panel, span);
+  box.update(panelWindows.get(panel.id) ?? defaultWindow(panel));
+  return box;
 }
 
 // --------------------------------------------------------------------------- search
@@ -1605,6 +1777,7 @@ function route(force = false) {
   const view = `${state.sectionId}|${state.rangeYears}|${state.params}`;
   const redraw = force || view !== shownView;
   if (redraw) {
+    if (state.rangeYears !== rangeYears) panelWindows.clear(); // a new period resets every slider
     rangeYears = state.rangeYears;
     updateRangeButtons();
     renderTabs(state.sectionId);
@@ -1654,6 +1827,13 @@ function init() {
   });
   initSearch();
   initPanelDialog();
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      for (const slider of document.querySelectorAll(".range-slider")) slider.draw();
+    }, 150);
+  });
   // Remember how the last click was made: a tap on a chart shows its tooltip, a mouse
   // click opens it in full screen.
   document.addEventListener("pointerdown", event => { lastPointerType = event.pointerType; }, true);

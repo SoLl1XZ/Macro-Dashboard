@@ -736,6 +736,88 @@ main {
   height: 180px;
 }
 
+/* The time window slider under a chart: an overview of all the history, the shown window
+   marked, and a handle at each end. --from and --to (0 to 1) place the mark; half a handle's
+   width on each side keeps it under the handles' centres, where a range input puts them. */
+.range-slider {
+  --thumb: 12px;
+  position: relative;
+  height: 28px;
+  overflow: hidden; /* clips the dimming shadow of the mark */
+  border-radius: 6px;
+}
+
+.range-overview {
+  position: absolute;
+  top: 3px;
+  left: calc(var(--thumb) / 2);
+  width: calc(100% - var(--thumb));
+  height: calc(100% - 6px);
+}
+
+/* Everything outside the window is dimmed by the mark's wide shadow. */
+.range-selection {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--from));
+  right: calc(var(--thumb) / 2 + (100% - var(--thumb)) * (1 - var(--to)));
+  border: 1px solid var(--baseline);
+  border-radius: 4px;
+  box-shadow: 0 0 0 999px color-mix(in srgb, var(--surface) 65%, transparent);
+  pointer-events: none;
+}
+
+/* Two range inputs on top of each other: only their handles take the pointer. */
+.range-thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.range-thumb:focus-visible { outline: none; }
+.range-thumb::-webkit-slider-runnable-track { height: 100%; background: transparent; }
+.range-thumb::-moz-range-track { background: transparent; }
+
+.range-thumb::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: var(--thumb);
+  height: 24px;
+  margin-top: 2px;
+  border: 1px solid var(--text-muted);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.range-thumb::-moz-range-thumb {
+  box-sizing: border-box;
+  width: var(--thumb);
+  height: 24px;
+  border: 1px solid var(--text-muted);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: ew-resize;
+  pointer-events: auto;
+}
+
+.range-thumb:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--series-1); outline-offset: 1px; }
+.range-thumb:focus-visible::-moz-range-thumb { outline: 2px solid var(--series-1); outline-offset: 1px; }
+
+/* Bigger handles for fingers. */
+@media (pointer: coarse) {
+  .range-slider { --thumb: 22px; height: 34px; }
+  .range-thumb::-webkit-slider-thumb { height: 30px; }
+  .range-thumb::-moz-range-thumb { height: 30px; }
+}
+
 /* A split card: one smaller chart per series, each under its own label and unit. */
 .split-charts {
   display: flex;
