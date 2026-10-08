@@ -155,6 +155,25 @@ class FetchEurostatTest(unittest.TestCase):
                 fetch_data.fetch_eurostat("ds?geo=DE")
 
 
+class FetchBisTest(unittest.TestCase):
+    """fetch_bis with canned SDMX-CSV answers instead of the network."""
+
+    POLICY_RATE = "DATAFLOW,FREQ,REF_AREA,TIME_PERIOD,OBS_VALUE\nBIS:WS_CBPOL(1.0),D,US,2026-09-28,3.875\n"
+    TOTAL_CREDIT = ("DATAFLOW,FREQ,BORROWERS_CTY,TIME_PERIOD,OBS_VALUE\n"
+                    "BIS:WS_TC(2.0),Q,KR,2025-Q4,86.0\nBIS:WS_TC(2.0),Q,KR,2026-Q1,85.1\n")
+
+    def test_plain_key_means_policy_rates(self):
+        with mock.patch.object(fetch_data, "http_get", return_value=self.POLICY_RATE) as http_get:
+            self.assertEqual(fetch_data.fetch_bis("D.US"), [("2026-09-28", 3.875)])
+        self.assertIn("/WS_CBPOL/1.0/D.US?", http_get.call_args.args[0])
+
+    def test_named_dataflow_uses_its_own_version(self):
+        with mock.patch.object(fetch_data, "http_get", return_value=self.TOTAL_CREDIT) as http_get:
+            observations = fetch_data.fetch_bis("WS_TC/Q.KR.H.A.M.770.A")
+        self.assertEqual(observations, [("2025-10-01", 86.0), ("2026-01-01", 85.1)])
+        self.assertIn("/WS_TC/2.0/Q.KR.H.A.M.770.A?", http_get.call_args.args[0])
+
+
 class FetchRecessionsTest(unittest.TestCase):
     def test_us_dates_fall_back_to_previous_run_when_fred_fails(self):
         def fred_down(series_id):

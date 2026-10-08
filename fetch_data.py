@@ -146,8 +146,14 @@ def fetch_eurostat(query: str) -> list[Observation]:
     )
 
 
-def fetch_bis(key: str) -> list[Observation]:
-    url = (f"https://stats.bis.org/api/v2/data/dataflow/BIS/WS_CBPOL/1.0/{key}"
+# BIS dataflows and their versions. A query without a dataflow ("D.US") means policy rates;
+# other dataflows are named in front of the key, e.g. "WS_TC/Q.KR.H.A.M.770.A" (total credit).
+BIS_DATAFLOW_VERSIONS = {"WS_CBPOL": "1.0", "WS_TC": "2.0"}
+
+
+def fetch_bis(query: str) -> list[Observation]:
+    dataflow, key = query.split("/", 1) if "/" in query else ("WS_CBPOL", query)
+    url = (f"https://stats.bis.org/api/v2/data/dataflow/BIS/{dataflow}/{BIS_DATAFLOW_VERSIONS[dataflow]}/{key}"
            f"?startPeriod={FETCH_START}&detail=dataonly")
     rows = csv.DictReader(io.StringIO(http_get(url, accept=SDMX_CSV)))
     return to_observations((row["TIME_PERIOD"], row["OBS_VALUE"]) for row in rows)
@@ -329,7 +335,8 @@ def source_url(s: Series) -> str | None:
         case "eurostat":
             return f"https://ec.europa.eu/eurostat/databrowser/view/{s.query.split('?')[0]}/default/table"
         case "bis":
-            return "https://data.bis.org/topics/CBPOL"
+            topic = "TOTAL_CREDIT" if s.query.startswith("WS_TC/") else "CBPOL"
+            return f"https://data.bis.org/topics/{topic}"
         case "imf_weo":
             return f"https://www.imf.org/external/datamapper/{s.query.split('/')[0]}@WEO"
         case "imf_cpi":
