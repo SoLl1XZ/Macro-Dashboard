@@ -683,6 +683,33 @@ function updateRangeButtons() {
   for (const button of document.querySelectorAll("#range-picker button")) {
     button.setAttribute("aria-pressed", String(Number(button.dataset.years) === rangeYears));
   }
+  // A period that isn't one of the buttons shows in the "years" field instead.
+  const custom = !PRESET_RANGES.includes(rangeYears);
+  const field = document.getElementById("range-years");
+  field.value = custom ? rangeYears : "";
+  field.closest(".range-custom").classList.toggle("is-active", custom);
+}
+
+function setRange(years) {
+  const { sectionId, params } = parseHash();
+  // Only changes the URL; the hashchange event then redraws the page from it.
+  location.hash = hashFor(sectionId, years, Object.fromEntries(params));
+}
+
+// The "years" field: a whole number from 1 to 100, applied with Enter or on leaving the field.
+function initRangeField() {
+  const field = document.getElementById("range-years");
+  field.addEventListener("input", () => field.setCustomValidity(""));
+  field.addEventListener("change", () => {
+    if (field.value === "") return;
+    const years = Number(field.value);
+    if (!isValidRange(years) || years === 0) {
+      field.setCustomValidity(`Skriv et helt antal år fra 1 til ${MAX_RANGE_YEARS}.`);
+      field.reportValidity();
+      return;
+    }
+    setRange(years);
+  });
 }
 
 // ---------------------------------------------------------------------- signals tab
@@ -1599,12 +1626,9 @@ function init() {
     if (typeof ChartZoom !== "undefined") Chart.register(ChartZoom);
   }
   for (const button of document.querySelectorAll("#range-picker button")) {
-    // Only changes the URL; the hashchange event then redraws the page from it.
-    button.addEventListener("click", () => {
-      const { sectionId, params } = parseHash();
-      location.hash = hashFor(sectionId, Number(button.dataset.years), Object.fromEntries(params));
-    });
+    button.addEventListener("click", () => setRange(Number(button.dataset.years)));
   }
+  initRangeField();
   renderUpdated();
   // Escape also closes a menu opened by hovering, where the focus is elsewhere.
   document.addEventListener("keydown", event => {

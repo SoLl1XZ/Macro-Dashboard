@@ -389,6 +389,44 @@ body {
   font-weight: 600;
 }
 
+/* The "years" field: as quiet as a button until it holds the chosen period. */
+.range-custom {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 8px 0 4px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.range-custom input {
+  width: 3.2em;
+  padding: 3px 4px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+
+.range-custom input::-webkit-inner-spin-button,
+.range-custom input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+.range-custom input:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
+}
+
+.range-custom.is-active {
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 .range-picker button:focus-visible {
   outline: 2px solid var(--series-1);
   outline-offset: 1px;
