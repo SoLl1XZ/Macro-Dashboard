@@ -1,5 +1,9 @@
 {
   "title": "Macro Dashboard",
-  "description": "A static dashboard with macroeconomic indicators in six sections: Global, US, Europe, Denmark, Asia and China. A Python script pulls the data from public APIs (FRED, ECB, Eurostat, BIS, IMF and Statistics Denmark), and the page draws the charts with Chart.js.",
-  "tags": ["Python", "JavaScript", "Chart.js", "HTML/CSS"]
+  "description": "A static dashboard with over 250 macroeconomic charts covering the world economy, stocks, commodities, three regions and 16 countries, where every country opens with the same 11 core panels. A Python script pulls the data from public sources (FRED, ECB, OECD, IMF, BIS, Eurostat, the World Bank and Statistics Denmark), and GitHub Actions refreshes it every day. The page draws the charts with Chart.js and adds signals such as a z-score heatmap and a release calendar, country comparisons, search and fullscreen zoom.",
+  "tags": ["Python", "JavaScript", "Chart.js", "HTML/CSS"],
+  "links": {
+    "Live site": "https://soll1xz.github.io/Macro-Dashboard/",
+    "GitHub": "https://github.com/SoLl1XZ/Macro-Dashboard"
+  }
 }
