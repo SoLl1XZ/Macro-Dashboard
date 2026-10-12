@@ -614,6 +614,7 @@ main {
 .section-note + .group-heading { margin-top: 0; }
 
 .card {
+  container-type: inline-size; /* the series table adapts to the card's width, not the window's */
   min-width: 0; /* lets long content shrink inside the grid instead of overflowing */
   display: flex;
   flex-direction: column;
@@ -1303,9 +1304,10 @@ main {
 
 /* ------------------------------------------------------------------- phones */
 
-/* The narrowest phones (320px): a change may break between number and unit
-   ("+0,50" / "%-point"), so the series table fits the card. */
-@media (max-width: 360px) {
+/* Narrow cards (phones, and two or three cards per row, where a card can be 326px
+   inside): a change may break between number and unit ("+0,50" / "%-point"), so the
+   series table fits the card. The widest table needs about 392px without breaks. */
+@container (max-width: 440px) {
   .series-table .num {
     padding-left: 8px;
     white-space: normal;
