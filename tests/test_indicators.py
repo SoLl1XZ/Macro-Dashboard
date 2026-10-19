@@ -10,6 +10,7 @@ from indicators import BIS_WEEKLY_MAX_AGE_DAYS, CORE_GROUP, CORE_TITLES, INPUT_S
 
 COUNTRIES_BY_REGION = {
     "north-america": ["us", "canada"],
+    "south-america": ["brazil", "argentina", "peru"],
     "europe": ["uk", "germany", "france", "denmark", "norway", "sweden", "portugal", "spain", "italy", "greece",
                "poland"],
     "asia": ["china", "japan", "korea", "thailand", "vietnam", "indonesia", "malaysia", "india"],
@@ -47,6 +48,7 @@ class CatalogTest(unittest.TestCase):
         # The page adds Signaler in front and Sammenlign at the end of these.
         self.assertEqual([section.id for section in SECTIONS],
                          ["global", "equities", "commodities", "north-america", *COUNTRIES_BY_REGION["north-america"],
+                          "south-america", *COUNTRIES_BY_REGION["south-america"],
                           "europe", *COUNTRIES_BY_REGION["europe"],
                           "asia", *COUNTRIES_BY_REGION["asia"]])
 
