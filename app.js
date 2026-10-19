@@ -431,6 +431,15 @@ function rangeStart(years) {
   return start.getTime();
 }
 
+// The global period for one panel. A series that lags by more than the period (IMF's quarterly
+// GDP for Peru) would show an empty chart, so its period ends at its own latest value instead.
+function panelRangeStart(panel) {
+  const start = rangeStart(rangeYears);
+  const latest = dataSpan(panel).max; // -Infinity without data: the period stays as it is
+  return start === undefined || latest >= start || latest === -Infinity
+    ? start : start - (Date.parse(DATA.generatedAt) - latest);
+}
+
 function timeUnit(years) {
   return years === 1 ? "month" : "year";
 }
@@ -625,7 +634,7 @@ function chartOptions(panel) {
     scales: {
       x: {
         type: "time",
-        min: panel.xMin ?? rangeStart(rangeYears),
+        min: panel.xMin ?? panelRangeStart(panel),
         max: panel.xMax, // a split card's charts end on the same date, so they line up
         time: { unit: timeUnit(rangeYears) },
         grid: { display: false },
@@ -1052,6 +1061,7 @@ const COMPARE_PRESETS = [
   { id: "norden", title: "Norden", countries: ["denmark", "norway", "sweden"] },
   { id: "europa", title: "Europa", region: "europe" },
   { id: "nordamerika", title: "Nordamerika", region: "north-america" },
+  { id: "sydamerika", title: "Sydamerika", region: "south-america" },
   { id: "asien", title: "Asien", region: "asia" },
 ];
 const comparePanels = new Map(); // "cmp-<slug>" -> the panel drawn for a parameter
@@ -1534,7 +1544,7 @@ function openPanelDialog(panelId, from, to) {
   for (const canvas of box.querySelectorAll(CHART_CANVAS)) {
     const part = view ? { ...canvas.chartPanel, xMin: view.min, xMax: view.max } : canvas.chartPanel;
     const chart = createChart(canvas, part, zoomOptions(span));
-    chart.defaultWindow = { min: rangeStart(rangeYears), max: canvas.chartPanel.xMax };
+    chart.defaultWindow = { min: panelRangeStart(canvas.chartPanel), max: canvas.chartPanel.xMax };
     dialogCharts.push(chart);
   }
   dialogSlider.update(view ?? defaultWindow(panel));
@@ -1598,7 +1608,7 @@ function monthIndexEnd(index) {
 // The global period, cut to the panel's data.
 function defaultWindow(panel) {
   const span = dataSpan(panel);
-  return { min: Math.max(rangeStart(rangeYears) ?? span.min, span.min), max: span.max };
+  return { min: Math.max(panelRangeStart(panel) ?? span.min, span.min), max: span.max };
 }
 
 function withWindow(part) {
@@ -1621,7 +1631,7 @@ function syncCardWindow(panel, view) {
   if (!card) return;
   for (const canvas of card.querySelectorAll(CHART_CANVAS)) {
     const chart = liveCharts.get(canvas);
-    if (chart) showWindow(chart, view ?? { min: rangeStart(rangeYears), max: canvas.chartPanel.xMax });
+    if (chart) showWindow(chart, view ?? { min: panelRangeStart(canvas.chartPanel), max: canvas.chartPanel.xMax });
   }
   card.querySelector(".range-slider")?.update(view ?? defaultWindow(panel));
 }
@@ -2039,7 +2049,7 @@ function renderTabs(activeId) {
   restoreNavFocus(remembered);
 }
 
-// Below 820px the tabs scroll sideways; centre the active one so it is always in view.
+// Below 960px the tabs scroll sideways; centre the active one so it is always in view.
 function scrollToActiveTab(list) {
   const activeTab = list.querySelector('.tab[aria-current="page"], .tab.is-active');
   if (!activeTab) return;

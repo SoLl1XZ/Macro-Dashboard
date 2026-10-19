@@ -147,3 +147,20 @@ test("search: share prices by name and in English", () => {
   assert.deepEqual(found("drawdown"), ["Aktier › Fald fra toppen i Europa"]);
   assert.deepEqual(found("equities germany"), ["Aktier › Aktier i Europa", "Aktier › Fald fra toppen i Europa"]);
 });
+
+test("search: the new countries in English", () => {
+  const country = (name, region, order) => ({
+    name: `${name} › Inflation`, words: lib.tokenize(`Inflation Kernetal ${name} ${region}`), order,
+  });
+  const documents = [
+    country("Spanien", "Europa", 1), country("Grækenland", "Europa", 2), country("Polen", "Europa", 3),
+    country("Brasilien", "Sydamerika", 4), country("Peru", "Sydamerika", 5), country("USA", "Nordamerika", 6),
+  ];
+  const found = query => lib.search(query, documents).map(document => document.name);
+  assert.deepEqual(found("spain"), ["Spanien › Inflation"]);
+  assert.deepEqual(found("greece inflation"), ["Grækenland › Inflation"]);
+  assert.deepEqual(found("poland"), ["Polen › Inflation"]);
+  assert.deepEqual(found("brazil"), ["Brasilien › Inflation"]);
+  assert.deepEqual(found("south america"), ["Brasilien › Inflation", "Peru › Inflation"]);
+  assert.deepEqual(found("latin america"), found("south america"));
+});

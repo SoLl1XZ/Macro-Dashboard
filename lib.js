@@ -192,7 +192,10 @@ const SYNONYMS = {
   uk: ["storbritannien"], britain: ["storbritannien"], germany: ["tyskland"], france: ["frankrig"],
   denmark: ["danmark"], norway: ["norge"], sweden: ["sverige"], china: ["kina"], korea: ["sydkorea"],
   india: ["indien"], indonesia: ["indonesien"], europe: ["europa"], asia: ["asien"],
-  america: ["nordamerika", "usa"], us: ["usa"],
+  spain: ["spanien"], italy: ["italien"], greece: ["graekenland"], poland: ["polen"], brazil: ["brasilien"],
+  south: ["sydamerika"], latin: ["sydamerika"], selic: ["styringsrente", "brasilien"],
+  nbp: ["styringsrente", "polen"],
+  america: ["nordamerika", "usa", "sydamerika"], us: ["usa"],
 };
 
 // A search word's best match in a document, counting its synonyms too.
