@@ -69,7 +69,7 @@ function buildHash(sectionId, rangeYears, extra = {}) {
 
 // ---------------------------------------------------------------------- Compare tab
 
-const MAX_COMPARE_COUNTRIES = 8; // more lines than this can't be told apart
+const MAX_COMPARE_COUNTRIES = 12; // one per series colour (--series-1..12 in style.css)
 const CORE_GROUP = "Kernetal"; // the group of a country's core panels (CORE_GROUP in indicators.py)
 
 // The core panels a comparison can show, with stable slugs for the URL. The titles must

@@ -18,7 +18,7 @@ Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, so
       Japan-fanerne er flyttet hertil som månedlige med de gamle keys (`sp500`, `nikkei`).
     - Fald fra toppen (`drawdown`) med en linje ved −20 % (bjørnemarked).
     - Thailand, Vietnam og Malaysia mangler (ingen gratis kilde).
-  - Sammenlign: vælg lande (højst 8, chips pr. region, hurtigvalg) og parametre (kernetitlerne).
+  - Sammenlign: vælg lande (højst 12, én pr. seriefarve; chips pr. region, hurtigvalg) og parametre (kernetitlerne).
     Én graf pr. parameter med fast farve pr. land, plus en tabel farvet efter 10-års-percentil.
     Den gamle sammenligning af to vilkårlige serier findes som "Avanceret" (`a=`/`b=`).
 - Hver region har en oversigtsside, og dens lande glider ud ved hover eller fokus:

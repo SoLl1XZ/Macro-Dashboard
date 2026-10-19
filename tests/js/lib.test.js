@@ -55,8 +55,9 @@ test("buildHash round-trips and keeps links short and readable", () => {
   assert.deepEqual([state.rangeYears, state.panel], [0, "jp_jgb"]);
 });
 
-test("compare: default choice, user choice, unknown ids and at most 8 countries", () => {
-  const countries = ["denmark", "sweden", "norway", "germany", "france", "uk", "us", "canada", "japan", "korea"];
+test("compare: default choice, user choice, unknown ids and at most 12 countries", () => {
+  const countries = ["denmark", "sweden", "norway", "germany", "france", "uk", "us", "canada", "japan", "korea",
+                     "portugal", "spain", "italy", "greece", "poland"];
   const parse = query => lib.parseCompareSelection(new URLSearchParams(query), countries);
   assert.deepEqual(parse(""), { ...lib.DEFAULT_COMPARE, advanced: false });
   assert.deepEqual(parse("c=sweden,narnia,sweden&p=inflation,nonsense"),
