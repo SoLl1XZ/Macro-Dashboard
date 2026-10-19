@@ -5,14 +5,15 @@ Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, so
 
 ## Faner, regioner og lande
 
-- Topniveau: **Signaler** · Global · Aktier · Råvarer · Nordamerika · Europa · Asien · **Sammenlign**.
+- Topniveau: **Signaler** · Global · Aktier · Råvarer · Nordamerika · Sydamerika · Europa · Asien · **Sammenlign**.
   - Signaler viser kalender, ugens største bevægelser og z-score-heatmap.
   - Global har dollarindeks, VIX, styringsrenter og verdens-BNP og -inflation.
   - Råvarer (`commodities`) har grupperne Indeks, Energi, Industrimetaller, Ædelmetaller, Landbrug og Analyse
     (alle `change="pct"`). Olie, gas, kobber og hvede er flyttet hertil med uændrede keys.
   - Aktier (`equities`) har kun månedsgennemsnit, så hele fanen opdateres samtidig, ca. en uge efter
     månedens udgang (Eriks valg 2026-10-08; en test låser det). Grupperne:
-    - Regioner: OECD's brede indeks (2015 = 100) pr. region via `SHARE_PRICE_REGIONS`.
+    - Regioner: OECD's brede indeks (2015 = 100) pr. region via `SHARE_PRICE_REGIONS` (Europa: euroområdet + 11 lande).
+      Sydamerika er ikke med endnu: OECD kunne ikke tjekkes 2026-10-19 (se faldgruber).
     - Kendte indeks: S&P 500, Euro Stoxx 50 og Nikkei 225 fra ECB. De daglige FRED-versioner på USA- og
       Japan-fanerne er flyttet hertil som månedlige med de gamle keys (`sp500`, `nikkei`).
     - Fald fra toppen (`drawdown`) med en linje ved −20 % (bjørnemarked).
@@ -22,9 +23,10 @@ Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, so
     Den gamle sammenligning af to vilkårlige serier findes som "Avanceret" (`a=`/`b=`).
 - Hver region har en oversigtsside, og dens lande glider ud ved hover eller fokus:
   - Nordamerika: `us`, `canada`
-  - Europa: `uk`, `germany`, `france`, `denmark`, `norway`, `sweden`
+  - Sydamerika: `brazil`, `argentina`, `peru`
+  - Europa: `uk`, `germany`, `france`, `denmark`, `norway`, `sweden`, `portugal`, `spain`, `italy`, `greece`, `poland`
   - Asien: `china`, `japan`, `korea`, `thailand`, `vietnam`, `indonesia`, `malaysia`, `india`
-- Kun disse 16 lande må være på dashboardet.
+- Kun disse 24 lande må være på dashboardet (Sydamerika og fem europæiske lande kom til 2026-10-19).
 - Strukturen er datadrevet: `SECTIONS` i `indicators.py` er `Section(id, title, region)` i menurækkefølge (låst af tests).
   - `app.js` bygger menuen og sætter Signaler først og Sammenlign sidst.
   - En ny topniveau-fane er én `Section(...)` uden region i listen (Aktier står mellem Global og Råvarer).
@@ -34,6 +36,7 @@ Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, so
   - Et kernepanel udelades hellere, end at det viser noget forkert.
   - Landespecifikke paneler følger under `extras_group(land)` ("Særligt for …").
   - Fælles kernepaneler bygges med fabrikkerne `imf_gdp_panel`, `imf_unemployment_panel`, `confidence_panel`, `debt_panel` og `current_account_panel`.
+  - Eurolandene Portugal, Spanien, Italien og Grækenland bygges helt af `euro_country_panels` (som Frankrig, inkl. spread mod Tyskland og budgetsaldo).
 - **Genbrug med `R(key, label)`** (`Ref`): et panel kan vise en serie, som et andet panel ejer, fx landenes tal i regionsoversigterne.
   - Hver serie-key ejes af præcis ét panel og hentes én gang.
   - Siden fylder ejerens data ind (`resolveReferences`) inkl. ejerens enhed og `change`.
@@ -108,6 +111,7 @@ GitHub Actions kører begge.
 - FRED (St. Louis Fed) – CSV-endpoint uden API-nøgle: `fred.stlouisfed.org/graph/fredgraph.csv?id=<SERIE>`.
   Rummer også OECD- og IMF-serier, fx ledighed (`LRHUTTTT..M156S`), eksport (`XTEXVA01..M664S`),
   real BNP (`NGDPRSAXDC..Q`) og 3-mdr. renter (`IR3TIB01..M156N`) for Japan og Korea.
+  10-årige renter for PT, ES, IT, GR og PL er FRED's kopi `IRLTLT01..M156N` (for Tyskland identisk med OECD's egen).
 - ECB Data Portal – `data-api.ecb.europa.eu`, inkl. månedlige aktieindeks (`FM/M.<land>.<valuta>.DS.EI.<indeks>.HSTA`).
   `HSTA` er månedsgennemsnittet af daglige lukkekurser (krydstjekket mod FRED's daglige S&P 500: samme tal).
 - Eurostat – `ec.europa.eu/eurostat/api`
@@ -171,6 +175,8 @@ GitHub Actions kører begge.
 - **OECD:**
   - API'et svarede `403` under test 2026-10-08, sandsynligvis en hastighedsgrænse. Saml derfor lande med `+` i én forespørgsel pr. dataflow og måling (ca. 5 kald pr. kørsel).
   - En fejlet forespørgsel fælder kun sine egne serier (`PartialBatch`).
+  - 2026-10-19 svarede OECD med en Cloudflare-udfordring (`cf-mitigated: challenge`) til Eriks computer, mens
+    GitHub Actions stadig fik data. Den omgås ikke; OECD-serier tjekkes så i Actions-kørslens rapport.
 - **FRED's OECD-kopier er delvist døde:**
   - CPI (`CPALTT01`) og tillid (`CSCICP03`/`BSCICP03`) stoppede 2021–2025. Brug OECD direkte (`PRICES`, `CLI`).
   - Ledighed (`LRHUTTTT`), 3-mdr.-renter (`IR3TIB01`), dag-til-dag-renter (`IRSTCI01`) og kvartals-BNP (`NGDPRSAXDC`) virker.
@@ -188,12 +194,15 @@ GitHub Actions kører begge.
   - Kerne-CPI for Canada, Japan, Kina og ASEAN/Indien. Japans FRED-serie stoppede 2021.
   - Industriproduktion for Japan/Korea (stoppede 2024-03).
   - Månedlig ledighed for de asiatiske EM-lande (kun årlig fra IMF).
+  - Statsrenter for Brasilien, Argentina og Peru (hverken FRED eller BIS). Argentinas styringsrente: centralbanken
+    afskaffede den i juli 2025 (BIS' serie stopper der). Månedlig ledighed for Sydamerika (kun årlig fra IMF).
+  - IMF's kvartals-BNP passer med WEO for Brasilien, Argentina og Peru (tjekket 2026-10-19) og bruges for dem.
   - Officielle kilder uden nøgle, der virker, men ikke er tilføjet (Eriks beslutning): Bank of Canada Valet (2 år, CPI-trim), Riksbank SWEA (2 år, SWESTR), SCB (KPIF), ONS og Bank Negara Malaysia.
 - **Menuen:**
   - Fanerne genopbygges ved hver navigation. Tastaturfokus flyttes derfor tilbage (`restoreNavFocus`).
   - En lukket menu er `inert`, ellers kan Tab nå dens links, mens de fader ud.
-  - Under 820 px scroller fanerne sidelæns, hover-menuen er slået fra, og landerækken bruges. Med 8 faner kræver
-    menuen 786 px (741 px uden pilene). Tilføjes en fane, så mål menuens bredde og flyt grænsen i `style.css`.
+  - Under 960 px scroller fanerne sidelæns, hover-menuen er slået fra, og landerækken bruges. Med 9 faner kræver
+    menuen 916 px. Tilføjes en fane, så mål menuens bredde og flyt grænsen i `style.css`.
 - **Browser-cache ved lokal test:** `python3 -m http.server` får browseren til at genbruge gammel `style.css`/`app.js`. Hent dem med `fetch(fil, {cache: "reload"})` før `location.reload()`.
 - **"Forældet" er generelle grænser pr. frekvens** (`MAX_AGE_DAYS`). En kilde, der altid er langsommere, får sin egen
   grænse med `S(..., max_age_days=365)` (BIS' kreditdata, IMF's kvartals-BNP for Malaysia). BIS udgiver én gang
@@ -210,6 +219,10 @@ GitHub Actions kører begge.
 - **Panel-anker ved genindlæsning:** med `panel=` i URL'en sættes `history.scrollRestoration = "manual"`, ellers lægger
   browseren sin gamle scrollposition oven på scroll til panelet.
 - **Smalle telefoner (320 px):** ændringer kan brydes mellem tal og enhed; "%‑point" har en ikke-brydende bindestreg (U+2011).
+- **Farver:** 12 seriefarver (`--series-1..12`, lys og mørk), valideret som én palet med dataviz-skillens validator.
+  `app.js` starter ikke forfra efter sidste farve, så en test kræver, at intet panel har flere serier end paletten.
+- **Periode for forsinkede serier:** ligger et panels seneste tal før periodens start (IMF's kvartals-BNP for Peru ved
+  1 år), slutter dets periode ved det seneste tal i stedet (`panelRangeStart`), så grafen ikke er tom.
 - **Ingen to y-akser** (heller ikke i Sammenlign): forskellige enheder vises som to grafer, eller begge omregnes til indeks 100.
   Valuta i Sammenlign vises som indeks 100 og som noteret (USD/XXX stiger, når valutaen svækkes; EUR/USD og GBP/USD omvendt).
 - **Pink Sheet:** linket til `CMO-Historical-Data-Monthly.xlsx` indeholder en hash, der skifter med hver årgang,
