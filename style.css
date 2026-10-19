@@ -20,6 +20,12 @@
   --series-6: #008300;
   --series-7: #4a3aa7;
   --series-8: #e34948;
+  /* 9-12 for panels with more than eight lines (Europe's eleven countries); validated with
+     the eight above as one categorical palette in both modes. */
+  --series-9: #0a8fa8;
+  --series-10: #7a8500;
+  --series-11: #9a3c8e;
+  --series-12: #a0612a;
   /* Diverging heat scale for the Signals tab: blue = low, red = high versus the last
      10 years, grey = normal. Red steps match the blue ones in OKLab lightness; both arms
      pass the dataviz validator (ordinal) and every text colour clears 6:1. */
@@ -56,6 +62,10 @@
     --series-6: #008300;
     --series-7: #9085e9;
     --series-8: #e66767;
+    --series-9: #0d8fa6;
+    --series-10: #8c9a00;
+    --series-11: #b856a8;
+    --series-12: #b87440;
     /* On the dark surface the stronger step is the brighter one. */
     --heat-neg-strong: #5598e7;  --heat-neg-strong-text: #0b0b0b;
     --heat-neg-weak: #184f95;    --heat-neg-weak-text: #ffffff;

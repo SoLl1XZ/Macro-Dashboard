@@ -52,6 +52,15 @@ class CatalogTest(unittest.TestCase):
                           "europe", *COUNTRIES_BY_REGION["europe"],
                           "asia", *COUNTRIES_BY_REGION["asia"]])
 
+    def test_every_line_in_a_panel_has_a_colour(self):
+        # app.js colours series n with --series-n; past the palette a line would have no colour.
+        css = (Path(__file__).parent.parent / "style.css").read_text()
+        light_palette = css.split("@media")[0]
+        colours = len(re.findall(r"--series-\d+:", light_palette))
+        self.assertEqual(colours, len(re.findall(r"--series-\d+:", css)) // 2, "dark mode has its own steps")
+        for panel in PANELS:
+            self.assertLessEqual(len(panel.series), colours, panel.id)
+
     def test_daily_bis_series_allow_its_weekly_publication(self):
         # BIS publishes once a week, so its daily series are normally 2-14 days old (measured
         # 2026-10-09..19); the general 10-day limit would call them stale every week.
