@@ -281,6 +281,7 @@ def euro_country_panels(section: str, prefix: str, name: str, code: str, geo: st
 # (key suffix, label, OECD code).
 SHARE_PRICE_REGIONS = (
     ("Nordamerika", "north_america", (("us", "USA", "USA"), ("ca", "Canada", "CAN")), ""),
+    ("Sydamerika", "south_america", (("br", "Brasilien", "BRA"),), "OECD har ikke Argentina og Peru."),
     ("Europa", "europe", (("ea", "Euroområdet", "EA20"), ("uk", "Storbritannien", "GBR"),
                           ("de", "Tyskland", "DEU"), ("fr", "Frankrig", "FRA"), ("dk", "Danmark", "DNK"),
                           ("no", "Norge", "NOR"), ("se", "Sverige", "SWE"), ("pt", "Portugal", "PRT"),
@@ -642,6 +643,7 @@ PANELS: list[Panel] = [
           "Real over for dollar.",
           (S("usdbrl", "USD/BRL", "bis", "WS_XRU/D.BR.BRL.A", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),),
           change="pct", decimals=4, group=CORE_GROUP),
+    confidence_panel("brazil", "br", "BRA"),
     debt_panel("brazil", "br_debt", "BRA"),
     current_account_panel("brazil", "br_ca", "BRA"),
 

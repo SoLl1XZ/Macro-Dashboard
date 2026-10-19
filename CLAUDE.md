@@ -13,7 +13,7 @@ Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, so
   - Aktier (`equities`) har kun månedsgennemsnit, så hele fanen opdateres samtidig, ca. en uge efter
     månedens udgang (Eriks valg 2026-10-08; en test låser det). Grupperne:
     - Regioner: OECD's brede indeks (2015 = 100) pr. region via `SHARE_PRICE_REGIONS` (Europa: euroområdet + 11 lande).
-      Sydamerika er ikke med endnu: OECD kunne ikke tjekkes 2026-10-19 (se faldgruber).
+      Sydamerika har kun Brasilien: OECD har ingen aktieindeks eller tillid for Argentina og Peru.
     - Kendte indeks: S&P 500, Euro Stoxx 50 og Nikkei 225 fra ECB. De daglige FRED-versioner på USA- og
       Japan-fanerne er flyttet hertil som månedlige med de gamle keys (`sp500`, `nikkei`).
     - Fald fra toppen (`drawdown`) med en linje ved −20 % (bjørnemarked).
