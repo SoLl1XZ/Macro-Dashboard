@@ -10,7 +10,8 @@ from indicators import BIS_WEEKLY_MAX_AGE_DAYS, CORE_GROUP, CORE_TITLES, INPUT_S
 
 COUNTRIES_BY_REGION = {
     "north-america": ["us", "canada"],
-    "europe": ["uk", "germany", "france", "denmark", "norway", "sweden"],
+    "europe": ["uk", "germany", "france", "denmark", "norway", "sweden", "portugal", "spain", "italy", "greece",
+               "poland"],
     "asia": ["china", "japan", "korea", "thailand", "vietnam", "indonesia", "malaysia", "india"],
 }
 

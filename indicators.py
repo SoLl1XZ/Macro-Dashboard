@@ -48,6 +48,11 @@ SECTIONS: list[Section] = [
     Section("denmark", "Danmark", "europe"),
     Section("norway", "Norge", "europe"),
     Section("sweden", "Sverige", "europe"),
+    Section("portugal", "Portugal", "europe"),
+    Section("spain", "Spanien", "europe"),
+    Section("italy", "Italien", "europe"),
+    Section("greece", "Grækenland", "europe"),
+    Section("poland", "Polen", "europe"),
     Section("asia", "Asien"),
     Section("china", "Kina", "asia"),
     Section("japan", "Japan", "asia"),
@@ -132,7 +137,8 @@ EURO_AREA_PEAKS_AND_TROUGHS = [("2008-Q1", "2009-Q2"), ("2011-Q3", "2013-Q1"), (
 
 # Which recession dating is shaded behind the charts of each section.
 RECESSIONS_BY_SECTION = {"us": "us", "europe": "euro_area", "germany": "euro_area",
-                         "france": "euro_area", "denmark": "euro_area"}
+                         "france": "euro_area", "denmark": "euro_area", "portugal": "euro_area",
+                         "spain": "euro_area", "italy": "euro_area", "greece": "euro_area"}
 
 INFLATION_TARGET_FED = ((2.0, "Fed-mål 2 %"),)
 INFLATION_TARGET_ECB = ((2.0, "ECB-mål 2 %"),)
@@ -204,6 +210,66 @@ def current_account_panel(section: str, key: str, code: str) -> Panel:
                  "Overskud (+) eller underskud (−) på betalingsbalancens løbende poster (IMF). "
                  "Indeværende og kommende år er prognoser.",
                  (S(key, "Løbende poster", "imf_weo", f"BCA_NGDPD/{code}"),), group=CORE_GROUP)
+
+
+
+def euro_country_panels(section: str, prefix: str, name: str, code: str, geo: str, bond: str) -> list[Panel]:
+    """A euro country built like France: ECB rates, Eurostat statistics and the spread to Germany.
+
+    `code` is the OECD/IMF code (e.g. "ITA"), `geo` Eurostat's (Greece is "EL"), `bond` the
+    name of its government bonds (e.g. "BTP"). The 10-year yield is FRED's copy of OECD's.
+    """
+    eurostat = f"geo={geo}"
+    fred_code = "GR" if geo == "EL" else geo  # FRED uses ISO codes, Eurostat calls Greece EL
+    return [
+        Panel(f"{prefix}_policy", section, "Styringsrente", "%",
+              f"{name} bruger euro, så ECB's indlånsrente er styringsrenten. €STR er den faktiske "
+              "dag-til-dag-rente. Samme serier som under Europa.",
+              (R("ecb_dfr", "ECB's indlånsrente"), R("estr", "€STR")),
+              group=CORE_GROUP),
+        Panel(f"{prefix}_yields", section, "Statsrenter", "%",
+              f"10-årig statsrente ({bond}, månedligt gennemsnit). En 2-årig rente findes ikke i vores kilder.",
+              (S(f"{prefix}_10y", "10 år", "fred", f"IRLTLT01{fred_code}M156N"),),
+              group=CORE_GROUP),
+        Panel(f"{prefix}_curve", section, "Rentekurve", "%-point",
+              "10-årig statsrente minus 3-mdr. Euribor (månedlige gennemsnit). Negativ (inverteret kurve) "
+              "har historisk varslet svag vækst.",
+              (S(f"{prefix}_10y3m", "10 år − 3 mdr.", "derived", (f"{prefix}_10y", "euribor_3m"), "spread"),),
+              group=CORE_GROUP),
+        Panel(f"{prefix}_inflation", section, "Inflation", "% år/år",
+              "Harmoniserede forbrugerpriser (HICP) og kerneinflation. ECB sigter efter 2 % for eurozonen.",
+              (S(f"{prefix}_hicp", "HICP", "eurostat", f"prc_hicp_minr?{eurostat}&coicop18=TOTAL&unit=RCH_A"),
+               S(f"{prefix}_core", "Kerne (ekskl. energi og fødevarer)", "eurostat",
+                 f"prc_hicp_minr?{eurostat}&coicop18=TOT_X_NRG_FOOD&unit=RCH_A")),
+              group=CORE_GROUP, reference_lines=INFLATION_TARGET_ECB),
+        Panel(f"{prefix}_unemployment", section, "Ledighed", "%",
+              "Harmoniseret arbejdsløshed (15–74 år), sæsonkorrigeret.",
+              (S(f"{prefix}_unrate", "Ledighed", "eurostat",
+                 f"une_rt_m?{eurostat}&age=TOTAL&sex=T&s_adj=SA&unit=PC_ACT"),),
+              group=CORE_GROUP),
+        Panel(f"{prefix}_gdp_q", section, "BNP-vækst (kvartal)", "% år/år",
+              "Real BNP sammenlignet med samme kvartal året før.",
+              (S(f"{prefix}_gdp", "Real BNP", "eurostat",
+                 f"namq_10_gdp?{eurostat}&na_item=B1GQ&unit=CLV_PCH_SM&s_adj=SCA"),),
+              group=CORE_GROUP),
+        imf_gdp_panel(section, f"{prefix}_gdp_imf", code),
+        Panel(f"{prefix}_fx", section, "Valuta", "USD pr. EUR",
+              "Euroen over for dollar (ECB's referencekurs; samme serie som under Europa).",
+              (R("eurusd", "EUR/USD"),), change="pct", decimals=4, group=CORE_GROUP),
+        confidence_panel(section, prefix, code),
+        debt_panel(section, f"{prefix}_debt", code),
+        current_account_panel(section, f"{prefix}_ca", code),
+        Panel(f"{prefix}_bund_spread", section, f"{bond}−Bund-spread", "%-point",
+              f"Merrente på {name}s 10-årige statsobligationer over for Tysklands. "
+              f"Måler markedets uro om {name}s gæld.",
+              (S(f"{prefix}_de_spread", f"{name} − Tyskland", "derived", (f"{prefix}_10y", "de_10y"), "spread"),),
+              group=extras_group(name)),
+        Panel(f"{prefix}_budget", section, "Budgetsaldo", "% af BNP",
+              "Offentligt overskud (+) eller underskud (−). EU's grænse er −3 %. "
+              "Indeværende og kommende år er IMF-prognoser.",
+              (S(f"{prefix}_balance", "Offentlig saldo", "imf_weo", f"GGXCNL_NGDP/{code}"),),
+              group=extras_group(name), reference_lines=((-3.0, "EU-grænse −3 %"),)),
+    ]
 
 
 # Share prices: the Aktier tab has one panel of index levels per region and one of how far
@@ -944,6 +1010,52 @@ PANELS: list[Panel] = [
     confidence_panel("sweden", "se", "SWE"),
     debt_panel("sweden", "se_debt", "SWE"),
     current_account_panel("sweden", "se_ca", "SWE"),
+
+    # ------------------------------------------------- PORTUGAL, SPANIEN, ITALIEN, GRÆKENLAND
+    *euro_country_panels("portugal", "pt", "Portugal", "PRT", "PT", "OT"),
+    *euro_country_panels("spain", "es", "Spanien", "ESP", "ES", "Bonos"),
+    *euro_country_panels("italy", "it", "Italien", "ITA", "IT", "BTP"),
+    *euro_country_panels("greece", "gr", "Grækenland", "GRC", "EL", "GGB"),
+
+    # ------------------------------------------------------------------- POLEN
+    Panel("pl_policy", "poland", "Styringsrente", "%",
+          "Narodowy Bank Polskis referencerente og den 3-måneders interbankrente (WIBOR, månedligt gennemsnit).",
+          (S("pl_policy", "NBP-rente", "bis", "D.PL", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),
+           S("pl_3m", "3-mdr. interbankrente", "fred", "IR3TIB01PLM156N")),
+          group=CORE_GROUP),
+    Panel("pl_yields", "poland", "Statsrenter", "%",
+          "10-årig statsrente (månedligt gennemsnit). En 2-årig rente findes ikke i vores kilder.",
+          (S("pl_10y", "10 år", "fred", "IRLTLT01PLM156N"),),
+          group=CORE_GROUP),
+    Panel("pl_curve", "poland", "Rentekurve", "%-point",
+          "10-årig statsrente minus 3-måneders interbankrente (månedlige gennemsnit). "
+          "Negativ (inverteret kurve) har historisk varslet svag vækst.",
+          (S("pl_10y3m", "10 år − 3 mdr.", "derived", ("pl_10y", "pl_3m"), "spread"),),
+          group=CORE_GROUP),
+    Panel("pl_inflation", "poland", "Inflation", "% år/år",
+          "Harmoniserede forbrugerpriser (HICP) og kerneinflation (Eurostat). NBP's mål på 2,5 % "
+          "(±1 point) gælder det nationale forbrugerprisindeks, der er beregnet lidt anderledes.",
+          (S("pl_hicp", "HICP", "eurostat", "prc_hicp_minr?geo=PL&coicop18=TOTAL&unit=RCH_A"),
+           S("pl_core", "Kerne (ekskl. energi og fødevarer)", "eurostat",
+             "prc_hicp_minr?geo=PL&coicop18=TOT_X_NRG_FOOD&unit=RCH_A")),
+          group=CORE_GROUP, reference_lines=((2.5, "NBP's mål 2,5 %"),)),
+    Panel("pl_unemployment", "poland", "Ledighed", "%",
+          "Harmoniseret arbejdsløshed (15–74 år), sæsonkorrigeret.",
+          (S("pl_unrate", "Ledighed", "eurostat", "une_rt_m?geo=PL&age=TOTAL&sex=T&s_adj=SA&unit=PC_ACT"),),
+          group=CORE_GROUP),
+    Panel("pl_gdp_q", "poland", "BNP-vækst (kvartal)", "% år/år",
+          "Real BNP sammenlignet med samme kvartal året før.",
+          (S("pl_gdp", "Real BNP", "eurostat", "namq_10_gdp?geo=PL&na_item=B1GQ&unit=CLV_PCH_SM&s_adj=SCA"),),
+          group=CORE_GROUP),
+    imf_gdp_panel("poland", "pl_gdp_imf", "POL"),
+    Panel("pl_fx", "poland", "Valuta", "PLN pr. valuta",
+          "Polske zloty over for dollar og euro.",
+          (S("usdpln", "USD/PLN", "bis", "WS_XRU/D.PL.PLN.A", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),
+           S("eurpln", "EUR/PLN", "ecb", "EXR/D.PLN.EUR.SP00.A")), change="pct", decimals=4,
+          group=CORE_GROUP),
+    confidence_panel("poland", "pl", "POL"),
+    debt_panel("poland", "pl_debt", "POL"),
+    current_account_panel("poland", "pl_ca", "POL"),
 
     # ------------------------------------------------------------------- ASIEN
     # The eight countries side by side. Each series is owned by its country's tab.
