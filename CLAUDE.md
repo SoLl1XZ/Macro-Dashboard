@@ -152,6 +152,8 @@ GitHub Actions kører begge.
 - Commits bruger noreply-adressen `222303744+SoLl1XZ@users.noreply.github.com` (sat i repoets lokale git-config), aldrig gmail.
 - Spørg altid før `git push`. Hent bot-commits med `git pull` før lokale ændringer.
 - Commit aldrig en lokalt genereret `data/data.js` (konflikt med botten). Kassér den før pull: `git restore data/data.js`.
+- To kørsler i kø (fx når GitHub sender samme push to gange, set 2026-10-19) starter fra samme commit. Den anden får
+  derfor en konflikt i `data.js`, som `git pull --rebase -X theirs` løser ved at beholde kørslens nyeste data.
 
 ## Kendte faldgruber
 

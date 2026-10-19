@@ -48,7 +48,9 @@ jobs:
             echo "No data changes."
           else
             git commit -m "Update data $(date -u +%Y-%m-%d)"
-            git pull --rebase
+            # A run queued behind another (e.g. GitHub sending one push twice) starts without that
+            # run's data commit; this commit only holds data.js, so keep this run's newer data.
+            git pull --rebase -X theirs
             git push
           fi
 
