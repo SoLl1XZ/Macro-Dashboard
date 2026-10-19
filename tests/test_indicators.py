@@ -6,7 +6,7 @@ from collections import Counter
 from pathlib import Path
 
 from fetch_data import BATCH_FETCHERS, SINGLE_FETCHERS
-from indicators import CORE_GROUP, CORE_TITLES, INPUT_SERIES, PANELS, SECTIONS, Ref, Series, owned_series
+from indicators import BIS_WEEKLY_MAX_AGE_DAYS, CORE_GROUP, CORE_TITLES, INPUT_SERIES, PANELS, SECTIONS, Ref, Series, owned_series
 
 COUNTRIES_BY_REGION = {
     "north-america": ["us", "canada"],
@@ -48,6 +48,13 @@ class CatalogTest(unittest.TestCase):
                          ["global", "equities", "commodities", "north-america", *COUNTRIES_BY_REGION["north-america"],
                           "europe", *COUNTRIES_BY_REGION["europe"],
                           "asia", *COUNTRIES_BY_REGION["asia"]])
+
+    def test_daily_bis_series_allow_its_weekly_publication(self):
+        # BIS publishes once a week, so its daily series are normally 2-14 days old (measured
+        # 2026-10-09..19); the general 10-day limit would call them stale every week.
+        for s in ALL_SERIES:
+            if s.source == "bis" and s.query.startswith(("D.", "WS_XRU/D.")):
+                self.assertEqual(s.max_age_days, BIS_WEEKLY_MAX_AGE_DAYS, s.key)
 
     def test_share_prices_are_monthly_so_they_update_together(self):
         # Erik's choice (2026-10-08): every index on the Aktier tab updates at the same time,

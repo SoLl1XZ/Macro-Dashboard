@@ -196,7 +196,8 @@ GitHub Actions kører begge.
     menuen 786 px (741 px uden pilene). Tilføjes en fane, så mål menuens bredde og flyt grænsen i `style.css`.
 - **Browser-cache ved lokal test:** `python3 -m http.server` får browseren til at genbruge gammel `style.css`/`app.js`. Hent dem med `fetch(fil, {cache: "reload"})` før `location.reload()`.
 - **"Forældet" er generelle grænser pr. frekvens** (`MAX_AGE_DAYS`). En kilde, der altid er langsommere, får sin egen
-  grænse med `S(..., max_age_days=365)` (BIS' kreditdata, IMF's kvartals-BNP for Malaysia). Ugens bevægelser tæller kun
+  grænse med `S(..., max_age_days=365)` (BIS' kreditdata, IMF's kvartals-BNP for Malaysia). BIS udgiver én gang
+  om ugen, så dens daglige serier har `BIS_WEEKLY_MAX_AGE_DAYS` (21 dage; normalt 2–14 dage gamle, låst af en test). Ugens bevægelser tæller kun
   serier med data fra de seneste 7 dage.
 - **Netværk:** `http_get` prøver igen ved timeout, afbrudt forbindelse (`RemoteDisconnected`), afkortet svar
   (`IncompleteRead`), 429 og 5xx. En 4xx betyder en forkert forespørgsel og prøves ikke igen, undtagen FRED: den kan

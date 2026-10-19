@@ -138,6 +138,10 @@ INFLATION_TARGET_FED = ((2.0, "Fed-mål 2 %"),)
 INFLATION_TARGET_ECB = ((2.0, "ECB-mål 2 %"),)
 
 
+# BIS publishes once a week, so its daily series are normally 2-14 days old.
+BIS_WEEKLY_MAX_AGE_DAYS = 21
+
+
 def S(key: str, label: str, source: str, query, transform: str | None = None,
       max_age_days: int | None = None) -> Series:
     return Series(key, label, source, query, transform, max_age_days)
@@ -489,7 +493,7 @@ PANELS: list[Panel] = [
     Panel("ca_policy", "canada", "Styringsrente", "%",
           "Bank of Canadas styringsrente, dag-til-dag-renten og den 3-måneders interbankrente "
           "(de to sidste som månedlige gennemsnit).",
-          (S("ca_policy", "BoC-rente", "bis", "D.CA"),
+          (S("ca_policy", "BoC-rente", "bis", "D.CA", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),
            S("ca_overnight", "Dag-til-dag-rente", "fred", "IRSTCI01CAM156N"),
            S("ca_3m", "3-mdr. interbankrente", "fred", "IR3TIB01CAM156N")),
           group=CORE_GROUP),
@@ -639,7 +643,7 @@ PANELS: list[Panel] = [
     # ---------------------------------------------------------- STORBRITANNIEN
     Panel("uk_policy", "uk", "Styringsrente", "%",
           "Bank of Englands styringsrente og dag-til-dag-renten SONIA (månedligt gennemsnit).",
-          (S("uk_bank_rate", "BoE-rente", "bis", "D.GB"),
+          (S("uk_bank_rate", "BoE-rente", "bis", "D.GB", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),
            S("uk_sonia", "SONIA", "fred", "IRSTCI01GBM156N")),
           group=CORE_GROUP),
     Panel("uk_yields", "uk", "Statsrenter", "%",
@@ -857,7 +861,7 @@ PANELS: list[Panel] = [
     Panel("no_policy", "norway", "Styringsrente", "%",
           "Norges Banks styringsrente, dag-til-dag-renten og den 3-måneders interbankrente "
           "(de to sidste som månedlige gennemsnit).",
-          (S("no_policy", "Norges Bank-rente", "bis", "D.NO"),
+          (S("no_policy", "Norges Bank-rente", "bis", "D.NO", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),
            S("no_overnight", "Dag-til-dag-rente", "fred", "IRSTCI01NOM156N"),
            S("no_3m", "3-mdr. interbankrente", "fred", "IR3TIB01NOM156N")),
           group=CORE_GROUP),
@@ -904,7 +908,7 @@ PANELS: list[Panel] = [
     Panel("se_policy", "sweden", "Styringsrente", "%",
           "Riksbankens styringsrente og den 3-måneders interbankrente (månedligt gennemsnit). "
           "En dag-til-dag-rente findes ikke i vores kilder (OECD-serien stoppede i 2020).",
-          (S("se_policy", "Riksbank-rente", "bis", "D.SE"),
+          (S("se_policy", "Riksbank-rente", "bis", "D.SE", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),
            S("se_3m", "3-mdr. interbankrente", "fred", "IR3TIB01SEM156N")),
           group=CORE_GROUP),
     Panel("se_yields", "sweden", "Statsrenter", "%",
@@ -965,7 +969,7 @@ PANELS: list[Panel] = [
     Panel("cn_lpr", "china", "Styringsrente", "%",
           "Kinas 1-årige Loan Prime Rate (benchmark for bankernes udlån og reelt styringsrenten siden "
           "2019) og den 3-måneders interbankrente (månedligt gennemsnit).",
-          (S("cn_lpr", "LPR 1 år", "bis", "D.CN"),
+          (S("cn_lpr", "LPR 1 år", "bis", "D.CN", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),
            S("cn_3m", "3-mdr. interbankrente", "fred", "IR3TIB01CNM156N")),
           group=CORE_GROUP),
     Panel("cn_10y", "china", "Statsrenter", "%",
@@ -1000,7 +1004,7 @@ PANELS: list[Panel] = [
     # ------------------------------------------------------------------- JAPAN
     Panel("jp_policy", "japan", "Styringsrente", "%",
           "Bank of Japans styringsrente og den 3-måneders interbankrente (månedligt gennemsnit).",
-          (S("jp_policy", "BoJ-rente", "bis", "D.JP"),
+          (S("jp_policy", "BoJ-rente", "bis", "D.JP", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),
            S("jp_3m", "3-mdr. interbankrente", "fred", "IR3TIB01JPM156N")),
           group=CORE_GROUP),
     Panel("jp_jgb", "japan", "Statsrenter", "%",
@@ -1042,7 +1046,7 @@ PANELS: list[Panel] = [
     # ---------------------------------------------------------------- SYDKOREA
     Panel("kr_policy", "korea", "Styringsrente", "%",
           "Bank of Koreas styringsrente og den 3-måneders interbankrente (månedligt gennemsnit).",
-          (S("kr_policy", "BoK-rente", "bis", "D.KR"),
+          (S("kr_policy", "BoK-rente", "bis", "D.KR", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),
            S("kr_3m", "3-mdr. interbankrente", "fred", "IR3TIB01KRM156N")),
           group=CORE_GROUP),
     Panel("kr_10y", "korea", "Statsrenter", "%",
@@ -1096,7 +1100,7 @@ PANELS: list[Panel] = [
     # No yields, quarterly GDP or confidence: see "Mangler en gratis kilde" in CLAUDE.md.
     Panel("th_policy", "thailand", "Styringsrente", "%",
           "Bank of Thailands styringsrente.",
-          (S("th_policy", "BoT-rente", "bis", "D.TH"),),
+          (S("th_policy", "BoT-rente", "bis", "D.TH", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),),
           group=CORE_GROUP),
     Panel("th_inflation", "thailand", "Inflation", "% år/år",
           "Forbrugerprisinflation (IMF). Bank of Thailand sigter efter 1–3 %.",
@@ -1130,7 +1134,7 @@ PANELS: list[Panel] = [
     # -------------------------------------------------------------- INDONESIEN
     Panel("id_policy", "indonesia", "Styringsrente", "%",
           "Bank Indonesias styringsrente og dag-til-dag-renten (månedligt gennemsnit).",
-          (S("id_policy", "BI-rente", "bis", "D.ID"),
+          (S("id_policy", "BI-rente", "bis", "D.ID", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),
            S("id_overnight", "Dag-til-dag-rente", "fred", "IRSTCI01IDM156N")),
           group=CORE_GROUP),
     Panel("id_inflation", "indonesia", "Inflation", "% år/år",
@@ -1145,7 +1149,7 @@ PANELS: list[Panel] = [
     imf_gdp_panel("indonesia", "id_gdp", "IDN"),
     Panel("usdidr", "indonesia", "Valuta", "IDR pr. USD",
           "Rupiah over for dollar (dagligt gennemsnit, BIS).",
-          (S("usdidr", "USD/IDR", "bis", "WS_XRU/D.ID.IDR.A"),), change="pct",
+          (S("usdidr", "USD/IDR", "bis", "WS_XRU/D.ID.IDR.A", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),), change="pct",
           group=CORE_GROUP),
     confidence_panel("indonesia", "id", "IDN"),
     debt_panel("indonesia", "id_debt", "IDN"),
@@ -1154,7 +1158,7 @@ PANELS: list[Panel] = [
     # ---------------------------------------------------------------- MALAYSIA
     Panel("my_policy", "malaysia", "Styringsrente", "%",
           "Bank Negara Malaysias styringsrente (Overnight Policy Rate).",
-          (S("my_policy", "BNM-rente (OPR)", "bis", "D.MY"),),
+          (S("my_policy", "BNM-rente (OPR)", "bis", "D.MY", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),),
           group=CORE_GROUP),
     Panel("my_inflation", "malaysia", "Inflation", "% år/år",
           "Forbrugerprisinflation (IMF). Bank Negara Malaysia har ikke et talfæstet inflationsmål.",
@@ -1181,7 +1185,7 @@ PANELS: list[Panel] = [
     Panel("in_policy", "india", "Styringsrente", "%",
           "Reserve Bank of Indias styringsrente (repo), dag-til-dag-renten og den 3-måneders "
           "interbankrente (de to sidste som månedlige gennemsnit).",
-          (S("in_policy", "RBI-rente", "bis", "D.IN"),
+          (S("in_policy", "RBI-rente", "bis", "D.IN", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),
            S("in_overnight", "Dag-til-dag-rente", "fred", "IRSTCI01INM156N"),
            S("in_3m", "3-mdr. interbankrente", "oecd", "FINMARK/IR3TIB/IND")),
           group=CORE_GROUP),
