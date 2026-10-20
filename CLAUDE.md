@@ -12,8 +12,9 @@ Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, so
     (alle `change="pct"`). Olie, gas, kobber og hvede er flyttet hertil med uændrede keys.
   - Aktier (`equities`) har kun månedsgennemsnit, så hele fanen opdateres samtidig, ca. en uge efter
     månedens udgang (Eriks valg 2026-10-08; en test låser det). Grupperne:
-    - Regioner: OECD's brede indeks (2015 = 100) pr. region via `SHARE_PRICE_REGIONS` (Europa: euroområdet + 11 lande).
-      Sydamerika har kun Brasilien: OECD har ingen aktieindeks eller tillid for Argentina og Peru.
+    - Regioner: OECD's brede indeks (2015 = 100) pr. region via `SHARE_PRICE_REGIONS`. Europa har 12 lande uden
+      euroområdet (Euro Stoxx 50 viser det) og uden Tyrkiet (lira-inflationen ville flade de andre ud).
+      Sydamerika har Brasilien og Chile: OECD har ingen aktieindeks eller tillid for Argentina og Peru.
     - Kendte indeks: S&P 500, Euro Stoxx 50 og Nikkei 225 fra ECB. De daglige FRED-versioner på USA- og
       Japan-fanerne er flyttet hertil som månedlige med de gamle keys (`sp500`, `nikkei`).
     - Fald fra toppen (`drawdown`) med en linje ved −20 % (bjørnemarked).
@@ -22,11 +23,15 @@ Et Python-script henter data fra offentlige API'er og skriver `data/data.js`, so
     Én graf pr. parameter med fast farve pr. land, plus en tabel farvet efter 10-års-percentil.
     Den gamle sammenligning af to vilkårlige serier findes som "Avanceret" (`a=`/`b=`).
 - Hver region har en oversigtsside, og dens lande glider ud ved hover eller fokus:
-  - Nordamerika: `us`, `canada`
-  - Sydamerika: `brazil`, `argentina`, `peru`
-  - Europa: `uk`, `germany`, `france`, `denmark`, `norway`, `sweden`, `portugal`, `spain`, `italy`, `greece`, `poland`
+  - Nordamerika: `us`, `canada`, `mexico`
+  - Sydamerika: `brazil`, `argentina`, `peru`, `chile`
+  - Europa: `uk`, `germany`, `france`, `denmark`, `norway`, `sweden`, `portugal`, `spain`, `italy`, `greece`, `poland`, `switzerland`, `turkey`
   - Asien: `china`, `japan`, `korea`, `thailand`, `vietnam`, `indonesia`, `malaysia`, `india`
-- Kun disse 24 lande må være på dashboardet (Sydamerika og fem europæiske lande kom til 2026-10-19).
+- Kun disse 28 lande må være på dashboardet (Sydamerika og fem europæiske lande kom til 2026-10-19; Mexico, Chile,
+  Schweiz og Tyrkiet 2026-10-20).
+- **Højst 12 linjer pr. graf** (12 validerede farver; 14 kunne ikke valideres). Europa-oversigten har derfor 12 lande:
+  Tyrkiet er kun på sin egen fane (inflation ~30 %, rente 37 %), ligesom Argentina i Sydamerika-oversigtens
+  inflationsgraf. Sammenligns hurtigvalg "Europa" tager de første 12 (alle undtagen Tyrkiet).
 - Strukturen er datadrevet: `SECTIONS` i `indicators.py` er `Section(id, title, region)` i menurækkefølge (låst af tests).
   - `app.js` bygger menuen og sætter Signaler først og Sammenlign sidst.
   - En ny topniveau-fane er én `Section(...)` uden region i listen (Aktier står mellem Global og Råvarer).
@@ -198,7 +203,9 @@ GitHub Actions kører begge.
   - Månedlig ledighed for de asiatiske EM-lande (kun årlig fra IMF).
   - Statsrenter for Brasilien, Argentina og Peru (hverken FRED eller BIS). Argentinas styringsrente: centralbanken
     afskaffede den i juli 2025 (BIS' serie stopper der). Månedlig ledighed for Sydamerika (kun årlig fra IMF).
-  - IMF's kvartals-BNP passer med WEO for Brasilien, Argentina og Peru (tjekket 2026-10-19) og bruges for dem.
+  - IMF's kvartals-BNP passer med WEO for Brasilien, Argentina, Peru (2026-10-19), Mexico og Chile (2026-10-20).
+  - Statsrenter for Tyrkiet (FRED's kopi findes ikke, 3-mdr.-renten stoppede 2008).
+  - Schweiz' ledighed når Eurostat et kvartal ad gangen, 3–4 måneder forsinket (`max_age_days=200`).
   - Officielle kilder uden nøgle, der virker, men ikke er tilføjet (Eriks beslutning): Bank of Canada Valet (2 år, CPI-trim), Riksbank SWEA (2 år, SWESTR), SCB (KPIF), ONS og Bank Negara Malaysia.
 - **Menuen:**
   - Fanerne genopbygges ved hver navigation. Tastaturfokus flyttes derfor tilbage (`restoreNavFocus`).
