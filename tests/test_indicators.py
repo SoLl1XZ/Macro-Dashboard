@@ -9,7 +9,7 @@ from fetch_data import BATCH_FETCHERS, SINGLE_FETCHERS
 from indicators import BIS_WEEKLY_MAX_AGE_DAYS, CORE_GROUP, CORE_TITLES, INPUT_SERIES, PANELS, SECTIONS, Ref, Series, owned_series
 
 COUNTRIES_BY_REGION = {
-    "north-america": ["us", "canada"],
+    "north-america": ["us", "canada", "mexico"],
     "south-america": ["brazil", "argentina", "peru"],
     "europe": ["uk", "germany", "france", "denmark", "norway", "sweden", "portugal", "spain", "italy", "greece",
                "poland"],

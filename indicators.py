@@ -41,6 +41,7 @@ SECTIONS: list[Section] = [
     Section("north-america", "Nordamerika"),
     Section("us", "USA", "north-america"),
     Section("canada", "Canada", "north-america"),
+    Section("mexico", "Mexico", "north-america"),
     Section("south-america", "Sydamerika"),
     Section("brazil", "Brasilien", "south-america"),
     Section("argentina", "Argentina", "south-america"),
@@ -280,7 +281,8 @@ def euro_country_panels(section: str, prefix: str, name: str, code: str, geo: st
 # each index is below its top. Per region: (title, id suffix, countries, note); per country:
 # (key suffix, label, OECD code).
 SHARE_PRICE_REGIONS = (
-    ("Nordamerika", "north_america", (("us", "USA", "USA"), ("ca", "Canada", "CAN")), ""),
+    ("Nordamerika", "north_america", (("us", "USA", "USA"), ("ca", "Canada", "CAN"), ("mx", "Mexico", "MEX")),
+     ""),
     ("Sydamerika", "south_america", (("br", "Brasilien", "BRA"),), "OECD har ikke Argentina og Peru."),
     ("Europa", "europe", (("ea", "Euroområdet", "EA20"), ("uk", "Storbritannien", "GBR"),
                           ("de", "Tyskland", "DEU"), ("fr", "Frankrig", "FRA"), ("dk", "Danmark", "DNK"),
@@ -475,21 +477,21 @@ PANELS: list[Panel] = [
     # ------------------------------------------------------------- NORDAMERIKA
     # The overview only refers to series that the USA and Canada tabs own.
     Panel("na_policy", "north-america", "Styringsrenter", "%",
-          "Fed's effektive rente og Bank of Canadas styringsrente.",
-          (R("us_ffr", "USA (Fed)"), R("ca_policy", "Canada (BoC)"))),
+          "Fed's effektive rente og Bank of Canadas og Banxicos styringsrenter.",
+          (R("us_ffr", "USA (Fed)"), R("ca_policy", "Canada (BoC)"), R("mx_policy", "Mexico (Banxico)"))),
     Panel("na_10y", "north-america", "10-årige statsrenter", "%",
-          "USA dagligt, Canada som månedligt gennemsnit.",
-          (R("us_10y", "USA"), R("ca_10y", "Canada"))),
+          "USA dagligt, Canada og Mexico som månedligt gennemsnit.",
+          (R("us_10y", "USA"), R("ca_10y", "Canada"), R("mx_10y", "Mexico"))),
     Panel("na_inflation", "north-america", "Inflation", "% år/år",
-          "Forbrugerprisinflation (CPI). Begge centralbanker sigter efter 2 %.",
-          (R("us_cpi", "USA"), R("ca_cpi", "Canada")),
+          "Forbrugerprisinflation (CPI). Fed og Bank of Canada sigter efter 2 %, Banxico efter 3 %.",
+          (R("us_cpi", "USA"), R("ca_cpi", "Canada"), R("mx_cpi", "Mexico")),
           reference_lines=((2.0, "Fed- og BoC-mål 2 %"),)),
     Panel("na_unemployment", "north-america", "Ledighed", "%",
           "Arbejdsløshed, sæsonkorrigeret.",
-          (R("us_unrate", "USA"), R("ca_unrate", "Canada"))),
+          (R("us_unrate", "USA"), R("ca_unrate", "Canada"), R("mx_unrate", "Mexico"))),
     Panel("na_gdp", "north-america", "BNP-vækst (kvartal)", "% år/år",
           "Real BNP sammenlignet med samme kvartal året før.",
-          (R("us_gdp_yoy", "USA"), R("ca_gdp_q", "Canada"))),
+          (R("us_gdp_yoy", "USA"), R("ca_gdp_q", "Canada"), R("mx_gdp_q", "Mexico"))),
 
     # --------------------------------------------------------------------- USA
     Panel("us_fed", "us", "Styringsrente", "%",
@@ -599,6 +601,43 @@ PANELS: list[Panel] = [
     confidence_panel("canada", "ca", "CAN"),
     debt_panel("canada", "ca_debt", "CAN"),
     current_account_panel("canada", "ca_ca", "CAN"),
+
+    # ------------------------------------------------------------------ MEXICO
+    Panel("mx_policy", "mexico", "Styringsrente", "%",
+          "Banco de Méxicos (Banxico) styringsrente og den 3-måneders interbankrente (månedligt gennemsnit).",
+          (S("mx_policy", "Banxico-rente", "bis", "D.MX", max_age_days=BIS_WEEKLY_MAX_AGE_DAYS),
+           S("mx_3m", "3-mdr. interbankrente", "fred", "IR3TIB01MXM156N")),
+          group=CORE_GROUP),
+    Panel("mx_yields", "mexico", "Statsrenter", "%",
+          "10-årig statsrente (månedligt gennemsnit). En 2-årig rente findes ikke i vores kilder.",
+          (S("mx_10y", "10 år", "fred", "IRLTLT01MXM156N"),),
+          group=CORE_GROUP),
+    Panel("mx_curve", "mexico", "Rentekurve", "%-point",
+          "10-årig statsrente minus 3-måneders interbankrente (månedlige gennemsnit). "
+          "Negativ (inverteret kurve) har historisk varslet svag vækst.",
+          (S("mx_10y3m", "10 år − 3 mdr.", "derived", ("mx_10y", "mx_3m"), "spread"),),
+          group=CORE_GROUP),
+    Panel("mx_inflation", "mexico", "Inflation", "% år/år",
+          "Forbrugerprisinflation (IMF). Banxicos mål er 3 % med et bånd på ±1 point.",
+          (S("mx_cpi", "CPI", "imf_cpi", "MEX"),),
+          group=CORE_GROUP, reference_lines=((3.0, "Banxicos mål 3 %"),)),
+    Panel("mx_unemployment", "mexico", "Ledighed", "%",
+          "Harmoniseret arbejdsløshed (OECD), sæsonkorrigeret.",
+          (S("mx_unrate", "Ledighed", "fred", "LRHUTTTTMXM156S"),),
+          group=CORE_GROUP),
+    # IMF's quarterly accounts match its annual growth for Mexico (checked 2026-10-20).
+    Panel("mx_gdp_q", "mexico", "BNP-vækst (kvartal)", "% år/år",
+          "Real BNP sammenlignet med samme kvartal året før (IMF's kvartalsvise nationalregnskab).",
+          (S("mx_gdp_q", "Real BNP", "imf_qnea", "MEX", "yoy"),),
+          group=CORE_GROUP),
+    imf_gdp_panel("mexico", "mx_gdp_imf", "MEX"),
+    Panel("usdmxn", "mexico", "Valuta", "MXN pr. USD",
+          "Mexicanske peso over for dollar.",
+          (S("usdmxn", "USD/MXN", "fred", "DEXMXUS"),), change="pct", decimals=4,
+          group=CORE_GROUP),
+    confidence_panel("mexico", "mx", "MEX"),
+    debt_panel("mexico", "mx_debt", "MEX"),
+    current_account_panel("mexico", "mx_ca", "MEX"),
 
     # -------------------------------------------------------------- SYDAMERIKA
     # The overview only refers to series that the country tabs own. Argentina's inflation
