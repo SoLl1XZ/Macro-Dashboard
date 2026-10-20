@@ -102,8 +102,12 @@ GitHub Actions kører begge.
 filen og tryk Enter. Den besøger alle faner ved 1, 5, 10 år og maks, tegner alle grafer og prøver ødelagte URL'er og
 hurtig navigation. Efter ca. et minut skriver den "✓ … 0 problemer" eller en tabel over fejl: fejl i siden, tomme grafer,
 y-akser under 60 %, to linjer i samme farve, NaN i teksten og sider bredere end vinduet. Kør den efter større
-ændringer ved 320, 768 og 1280 px (enhedsværktøjslinjen i DevTools). Den bruger sidens egne funktioner og kører
-derfor ikke i Node eller Actions.
+ændringer ved 320, 768 og 1280 px (enhedsværktøjslinjen i DevTools). Y-akser under 60 % er kun advarsler.
+
+**Automatisk i Actions:** `tests/run_browser_stress.mjs` åbner siden i Chrome uden vindue ved 320, 768 og 1280 px
+og kører samme script via Chrome DevTools Protocol (Nodes indbyggede WebSocket, ingen npm-pakker). Trinnet
+"Stress test the page" ligger efter "Fetch data": et alvorligt problem stopper kørslen, før data committes og siden
+udgives. Lokalt kræver det Chrome (`CHROME=<sti> node tests/run_browser_stress.mjs`) og en server på port 8765.
 
 ## Struktur
 
@@ -163,6 +167,8 @@ derfor ikke i Node eller Actions.
   publicering af `index.html`, `lib.js`, `app.js`, `style.css`, `favicon.svg`, `data/` til Pages.
 - Commits bruger noreply-adressen `222303744+SoLl1XZ@users.noreply.github.com` (sat i repoets lokale git-config), aldrig gmail.
 - Spørg altid før `git push`. Hent bot-commits med `git pull` før lokale ændringer.
+- Kun `main` committer data og udgiver. En kørsel startet på en anden gren (`gh workflow run update.yml --ref <gren>`)
+  er en testkørsel: tests, hentning og stresstest kører, men intet committes eller udgives.
 - Commit aldrig en lokalt genereret `data/data.js` (konflikt med botten). Kassér den før pull: `git restore data/data.js`.
 - To kørsler i kø (fx når GitHub sender samme push to gange, set 2026-10-19) starter fra samme commit. Den anden får
   derfor en konflikt i `data.js`, som `git pull --rebase -X theirs` løser ved at beholde kørslens nyeste data.
