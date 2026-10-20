@@ -98,6 +98,13 @@ node --test tests/js/*.test.js          # JavaScript: lib.js (URL, Sammenlign-va
 Node er installeret med Homebrew; testene bruger kun Nodes indbyggede test-runner (ingen npm-pakker).
 GitHub Actions kører begge.
 
+**Stresstest i browseren** (`tests/browser_stress.js`): åbn dashboardet, åbn konsollen (Cmd+Option+J), indsæt hele
+filen og tryk Enter. Den besøger alle faner ved 1, 5, 10 år og maks, tegner alle grafer og prøver ødelagte URL'er og
+hurtig navigation. Efter ca. et minut skriver den "✓ … 0 problemer" eller en tabel over fejl: fejl i siden, tomme grafer,
+y-akser under 60 %, to linjer i samme farve, NaN i teksten og sider bredere end vinduet. Kør den efter større
+ændringer ved 320, 768 og 1280 px (enhedsværktøjslinjen i DevTools). Den bruger sidens egne funktioner og kører
+derfor ikke i Node eller Actions.
+
 ## Struktur
 
 | Fil | Ansvar |
