@@ -76,7 +76,7 @@ async function loadPage(send, sessionId) {
   const deadline = Date.now() + PAGE_LOAD_TIMEOUT_MS;
   // The page is ready when its data and Chart.js (from the CDN) are loaded and the tab is drawn.
   const ready = 'document.readyState === "complete" && typeof MACRO_DATA === "object" '
-    + '&& typeof Chart === "function" && document.querySelector("#panels .card") !== null';
+    + '&& typeof Chart === "function" && document.querySelector("#panels")?.children.length > 0';
   while (!(await evaluate(send, sessionId, ready).catch(() => false))) {
     if (Date.now() > deadline) throw new Error(`The page did not load within ${PAGE_LOAD_TIMEOUT_MS / 1000} s`);
     await new Promise(resolve => setTimeout(resolve, 250));
