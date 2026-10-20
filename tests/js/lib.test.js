@@ -164,4 +164,9 @@ test("search: the new countries in English", () => {
   assert.deepEqual(found("brazil"), ["Brasilien › Inflation"]);
   assert.deepEqual(found("south america"), ["Brasilien › Inflation", "Peru › Inflation"]);
   assert.deepEqual(found("latin america"), found("south america"));
+  const more = [country("Schweiz", "Europa", 1), country("Tyrkiet", "Europa", 2), country("Mexico", "Nordamerika", 3)];
+  const foundMore = query => lib.search(query, more).map(document => document.name);
+  assert.deepEqual(foundMore("switzerland"), ["Schweiz › Inflation"]);
+  assert.deepEqual(foundMore("turkey"), ["Tyrkiet › Inflation"]);
+  assert.deepEqual(foundMore("mexico"), ["Mexico › Inflation"]);
 });

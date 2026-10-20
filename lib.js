@@ -194,7 +194,8 @@ const SYNONYMS = {
   india: ["indien"], indonesia: ["indonesien"], europe: ["europa"], asia: ["asien"],
   spain: ["spanien"], italy: ["italien"], greece: ["graekenland"], poland: ["polen"], brazil: ["brasilien"],
   south: ["sydamerika"], latin: ["sydamerika"], selic: ["styringsrente", "brasilien"],
-  nbp: ["styringsrente", "polen"],
+  nbp: ["styringsrente", "polen"], switzerland: ["schweiz"], swiss: ["schweiz"], turkey: ["tyrkiet"],
+  snb: ["styringsrente", "schweiz"], cbrt: ["styringsrente", "tyrkiet"], banxico: ["styringsrente", "mexico"],
   america: ["nordamerika", "usa", "sydamerika"], us: ["usa"],
 };
 

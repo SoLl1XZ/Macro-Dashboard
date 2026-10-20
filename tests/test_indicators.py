@@ -12,7 +12,7 @@ COUNTRIES_BY_REGION = {
     "north-america": ["us", "canada", "mexico"],
     "south-america": ["brazil", "argentina", "peru", "chile"],
     "europe": ["uk", "germany", "france", "denmark", "norway", "sweden", "portugal", "spain", "italy", "greece",
-               "poland"],
+               "poland", "switzerland", "turkey"],
     "asia": ["china", "japan", "korea", "thailand", "vietnam", "indonesia", "malaysia", "india"],
 }
 
