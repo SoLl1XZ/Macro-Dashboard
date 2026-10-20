@@ -20,6 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # to commit data/data.js
+      issues: write # to report failed sources and runs
+    env:
+      GH_TOKEN: ${{ github.token }} # for the gh command in the report steps
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - uses: actions/checkout@v7
 
@@ -37,6 +41,24 @@ jobs:
 
       - name: Fetch data
         run: python fetch_data.py
+
+      # One open issue "Datakilder fejler" while sources fail: a run with failures opens it or
+      # comments on it, the first run without closes it. GitHub mails the owner about both.
+      - name: Report failed sources
+        run: |
+          body=$(python health.py)
+          open=$(gh issue list --label datakilder --state open --json number --jq '.[0].number // empty')
+          if [ -n "$body" ]; then
+            body="$body"$'\n\n'"Kørsel: $RUN_URL"
+            if [ -n "$open" ]; then
+              gh issue comment "$open" --body "$body"
+            else
+              gh label create datakilder --color d93f0b --description "En datakilde fejler" --force
+              gh issue create --title "Datakilder fejler" --label datakilder --body "$body"
+            fi
+          elif [ -n "$open" ]; then
+            gh issue close "$open" --comment "Alle kilder virker igen: $RUN_URL"
+          fi
 
       # The page with the new data in headless Chrome at 320, 768 and 1280 px: a page error, an
       # empty chart, overflow or two lines in one colour stop the run before the data is
@@ -62,6 +84,25 @@ jobs:
             # run's data commit; this commit only holds data.js, so keep this run's newer data.
             git pull --rebase -X theirs
             git push
+          fi
+
+      # The same for the run itself (a failing test, fetch or stress test): an issue while it
+      # fails, closed by the next run that gets this far.
+      - name: Close the failed-run issue
+        run: |
+          open=$(gh issue list --label korsel --state open --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then gh issue close "$open" --comment "Kørslen virker igen: $RUN_URL"; fi
+
+      - name: Report a failed run
+        if: failure()
+        run: |
+          open=$(gh issue list --label korsel --state open --json number --jq '.[0].number // empty')
+          body="Den automatiske kørsel fejlede. Se hvilket trin og hvorfor: $RUN_URL"
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "$body"
+          else
+            gh label create korsel --color b60205 --description "Den automatiske kørsel fejler" --force
+            gh issue create --title "Kørslen fejler" --label korsel --body "$body"
           fi
 
   deploy:

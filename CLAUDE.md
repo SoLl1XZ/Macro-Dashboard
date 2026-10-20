@@ -116,6 +116,7 @@ udgives. Lokalt kræver det Chrome (`CHROME=<sti> node tests/run_browser_stress.
 | `indicators.py` | Sektioner og regioner, katalog over alle serier (kilde, id, sektion, gruppe, enhed, beregning, referencelinjer, refs), kernetitler, CEPR-recessioner |
 | `events.py` | ECB- og Fed-mødedatoer (manuel liste med kilder) og kalenderlogik |
 | `fetch_data.py` | Henter serier fra hver kilde, recessioner (USREC) og Eurostats udgivelseskalender; skriver `data/data.js` |
+| `health.py` | Teksten til issuet "Datakilder fejler": serier, der ikke kunne hentes (tom, når alt virker) |
 | `transforms.py` | Beregninger: år-over-år, spreads, fald fra toppen, ændringer, percentil, z-score, ugebevægelse, recessionsperioder |
 | `lib.js` | Ren logik uden DOM (URL-tilstand, Sammenlign-valg, søgematch); indlæses før `app.js` og testes med Node |
 | `index.html`, `style.css`, `app.js`, `favicon.svg` | Selve dashboardet (Chart.js + zoom-plugin fra CDN med SRI) |
@@ -167,6 +168,11 @@ udgives. Lokalt kræver det Chrome (`CHROME=<sti> node tests/run_browser_stress.
   publicering af `index.html`, `lib.js`, `app.js`, `style.css`, `favicon.svg`, `data/` til Pages.
 - Commits bruger noreply-adressen `222303744+SoLl1XZ@users.noreply.github.com` (sat i repoets lokale git-config), aldrig gmail.
 - Spørg altid før `git push`. Hent bot-commits med `git pull` før lokale ændringer.
+- **Besked ved fejl (GitHub-issues, som GitHub mailer til ejeren):**
+  - "Datakilder fejler" (mærkat `datakilder`): `health.py` lister serier med `error` i `data.js`, grupperet efter
+    fejl. Én åben ad gangen: nye fejl kommenteres, og den første kørsel uden fejl lukker den. Forældede serier tæller ikke.
+  - "Kørslen fejler" (mærkat `korsel`): et trin i update-jobbet fejlede. Lukkes af næste kørsel, der når til enden.
+    Fejl i deploy-jobbet giver ikke et issue (kun GitHubs egen mail om fejlede kørsler).
 - Kun `main` committer data og udgiver. En kørsel startet på en anden gren (`gh workflow run update.yml --ref <gren>`)
   er en testkørsel: tests, hentning og stresstest kører, men intet committes eller udgives.
 - Commit aldrig en lokalt genereret `data/data.js` (konflikt med botten). Kassér den før pull: `git restore data/data.js`.
