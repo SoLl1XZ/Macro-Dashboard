@@ -38,8 +38,18 @@ jobs:
       - name: Fetch data
         run: python fetch_data.py
 
+      # The page with the new data in headless Chrome at 320, 768 and 1280 px: a page error, an
+      # empty chart, overflow or two lines in one colour stop the run before the data is
+      # committed or published. Chrome and Node 22 are preinstalled on GitHub's runners.
+      - name: Stress test the page
+        run: |
+          python -m http.server 8765 --bind 127.0.0.1 &
+          node tests/run_browser_stress.mjs http://127.0.0.1:8765/index.html
+
       # Pushes made with the workflow's own token don't trigger new runs, so this can't loop.
+      # Only main commits data: a run started by hand on another branch is a test run.
       - name: Commit data
+        if: github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -56,6 +66,7 @@ jobs:
 
   deploy:
     needs: update
+    if: github.ref == 'refs/heads/main' # a test run on another branch publishes nothing
     runs-on: ubuntu-latest
     permissions:
       pages: write
