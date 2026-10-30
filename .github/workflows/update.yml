@@ -43,15 +43,23 @@ jobs:
         run: python fetch_data.py
 
       # One open issue "Datakilder fejler" while sources fail: a run with failures opens it or
-      # comments on it, the first run without closes it. GitHub mails the owner about both.
+      # comments on it if a series failed that the issue doesn't mention yet, the first run
+      # without failures closes it. GitHub mails the owner about each. Only main reports, and a
+      # failing gh call must not stop the data from being committed and published.
       - name: Report failed sources
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
         run: |
           body=$(python health.py)
           open=$(gh issue list --label datakilder --state open --json number --jq '.[0].number // empty')
           if [ -n "$body" ]; then
             body="$body"$'\n\n'"Kørsel: $RUN_URL"
             if [ -n "$open" ]; then
-              gh issue comment "$open" --body "$body"
+              # The text changes every run (it has the run's time), so compare the series keys in backticks.
+              keys() { grep -o '`[^`]*`' | sort -u; }
+              posted=$(gh issue view "$open" --json body,comments --jq '.body, .comments[].body')
+              new=$(comm -23 <(printf '%s\n' "$body" | keys) <(printf '%s\n' "$posted" | keys))
+              if [ -n "$new" ]; then gh issue comment "$open" --body "$body"; fi
             else
               gh label create datakilder --color d93f0b --description "En datakilde fejler" --force
               gh issue create --title "Datakilder fejler" --label datakilder --body "$body"
@@ -87,14 +95,16 @@ jobs:
           fi
 
       # The same for the run itself (a failing test, fetch or stress test): an issue while it
-      # fails, closed by the next run that gets this far.
+      # fails, closed by the next run that gets this far. Only on main, and never blocking the deploy.
       - name: Close the failed-run issue
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
         run: |
           open=$(gh issue list --label korsel --state open --json number --jq '.[0].number // empty')
           if [ -n "$open" ]; then gh issue close "$open" --comment "Kørslen virker igen: $RUN_URL"; fi
 
       - name: Report a failed run
-        if: failure()
+        if: failure() && github.ref == 'refs/heads/main'
         run: |
           open=$(gh issue list --label korsel --state open --json number --jq '.[0].number // empty')
           body="Den automatiske kørsel fejlede. Se hvilket trin og hvorfor: $RUN_URL"

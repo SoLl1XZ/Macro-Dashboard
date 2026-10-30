@@ -170,11 +170,13 @@ udgives. Lokalt kræver det Chrome (`CHROME=<sti> node tests/run_browser_stress.
 - Spørg altid før `git push`. Hent bot-commits med `git pull` før lokale ændringer.
 - **Besked ved fejl (GitHub-issues, som GitHub mailer til ejeren):**
   - "Datakilder fejler" (mærkat `datakilder`): `health.py` lister serier med `error` i `data.js`, grupperet efter
-    fejl. Én åben ad gangen: nye fejl kommenteres, og den første kørsel uden fejl lukker den. Forældede serier tæller ikke.
+    fejl. Én åben ad gangen: en kørsel kommenterer kun, når en serie fejler, som issuet ikke nævner endnu (samme
+    fejl giver ikke en mail om dagen), og den første kørsel uden fejl lukker den. Forældede serier tæller ikke.
   - "Kørslen fejler" (mærkat `korsel`): et trin i update-jobbet fejlede. Lukkes af næste kørsel, der når til enden.
     Fejl i deploy-jobbet giver ikke et issue (kun GitHubs egen mail om fejlede kørsler).
 - Kun `main` committer data og udgiver. En kørsel startet på en anden gren (`gh workflow run update.yml --ref <gren>`)
-  er en testkørsel: tests, hentning og stresstest kører, men intet committes eller udgives.
+  er en testkørsel: tests, hentning og stresstest kører, men intet committes eller udgives, og intet issue åbnes,
+  kommenteres eller lukkes. Issue-trinnene har `continue-on-error`, så en fejl i `gh` aldrig stopper udgivelsen.
 - Commit aldrig en lokalt genereret `data/data.js` (konflikt med botten). Kassér den før pull: `git restore data/data.js`.
 - To kørsler i kø (fx når GitHub sender samme push to gange, set 2026-10-19) starter fra samme commit. Den anden får
   derfor en konflikt i `data.js`, som `git pull --rebase -X theirs` løser ved at beholde kørslens nyeste data.
